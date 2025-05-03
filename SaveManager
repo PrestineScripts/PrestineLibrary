@@ -1,0 +1,47 @@
+local HttpService = game:GetService("HttpService")
+local SaveManager = {}
+
+local baseFolderPath = "PrestineHub"
+local gameFolder = game.Name
+local fileName = "saveConfig.json"
+local fullPath = baseFolderPath .. "/" .. gameFolder .. "/" .. fileName
+
+local config = {}
+
+function SaveManager:SetFolder(customPath)
+    local parts = string.split(customPath, "/")
+    baseFolderPath = parts[1]
+    gameFolder = parts[2] or game.Name
+    fullPath = baseFolderPath .. "/" .. gameFolder .. "/" .. fileName
+end
+
+function SaveManager:Load()
+    if isfile(fullPath) then
+        local data = readfile(fullPath)
+        config = HttpService:JSONDecode(data)
+    else
+        config = {}
+    end
+    return config
+end
+
+function SaveManager:Save()
+    if not isfolder(baseFolderPath) then
+        makefolder(baseFolderPath)
+    end
+    if not isfolder(baseFolderPath .. "/" .. gameFolder) then
+        makefolder(baseFolderPath .. "/" .. gameFolder)
+    end
+    writefile(fullPath, HttpService:JSONEncode(config))
+end
+
+function SaveManager:Get(key, default)
+    return config[key] ~= nil and config[key] or default
+end
+
+function SaveManager:Set(key, value)
+    config[key] = value
+    self:Save()
+end
+
+return SaveManager
