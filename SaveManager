@@ -1,52 +1,39 @@
-local HttpService = game:GetService("HttpService")
 local SaveManager = {}
 
-local savePath = "DefaultGame"
-local saveData = {}
+SaveManager.data = {}
 
-function SaveManager:Set(path)
-	savePath = path
+function SaveManager:Set(hubName, gameName)
+    if writefile then
+        self.mainFolder = hubName or "UnnamedHub"
+        self.gameFolder = gameName or "UnnamedGame"
+        self.mainConfig = "SavedConfig.json"
+
+        if not isfolder(self.mainFolder) then
+            makefolder(self.mainFolder)
+        end
+
+        self.gameFolderPath = self.mainFolder .. "/" .. self.gameFolder
+        if not isfolder(self.gameFolderPath) then
+            makefolder(self.gameFolderPath)
+        end
+
+        self.filePath = self.gameFolderPath .. "/" .. self.mainConfig
+    end
 end
 
 function SaveManager:SetValue(key, value)
-	saveData[key] = tostring(value)
-end
-
-function SaveManager:Set(key, value)
-	saveData[key] = tostring(value)
-end
-
-function SaveManager:Get(key, default)
-	return saveData[key] ~= nil and saveData[key] or default
+    self.data[key] = value
 end
 
 function SaveManager:Save()
-	local fullPath = savePath .. "/SavedConfig.txt"
-	local lines = {}
-	for key, value in pairs(saveData) do
-		table.insert(lines, key .. "=" .. tostring(value))
-	end
-	local text = table.concat(lines, "\n")
-	if writefile then
-		if isfolder and not isfolder(savePath) then
-			makefolder(savePath)
-		end
-		writefile(fullPath, text)
-	end
-end
-
-function SaveManager:Load()
-	local fullPath = savePath .. "/SavedConfig.txt"
-	if readfile and isfile and isfile(fullPath) then
-		local text = readfile(fullPath)
-		saveData = {}
-		for line in text:gmatch("[^\r\n]+") do
-			local key, value = line:match("^(.-)=(.*)$")
-			if key and value then
-				saveData[key] = value
-			end
-		end
-	end
+    if self.filePath and writefile then
+        local HttpService = game:GetService("HttpService")
+        local encoded = HttpService:JSONEncode(self.data)
+        writefile(self.filePath, encoded)
+        print("Saved to:", self.filePath)
+    else
+        warn("SaveManager not initialized or writefile unavailable.")
+    end
 end
 
 return SaveManager
