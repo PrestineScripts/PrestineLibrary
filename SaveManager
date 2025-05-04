@@ -12,16 +12,33 @@ function SaveManager:SetValue(key, value)
 	saveData[key] = value
 end
 
+function SaveManager:Set(key, value)
+	saveData[key] = value
+end
+
+function SaveManager:Get(key, default)
+	return saveData[key] ~= nil and saveData[key] or default
+end
+
 function SaveManager:Save()
 	local fullPath = savePath .. "/SavedConfig.json"
 	local json = HttpService:JSONEncode(saveData)
 	if writefile then
-		if isfolder then
-			if not isfolder(savePath) then
-				makefolder(savePath)
-			end
+		if isfolder and not isfolder(savePath) then
+			makefolder(savePath)
 		end
 		writefile(fullPath, json)
+	end
+end
+
+function SaveManager:Load()
+	local fullPath = savePath .. "/SavedConfig.json"
+	if readfile and isfile and isfile(fullPath) then
+		local json = readfile(fullPath)
+		local data = HttpService:JSONDecode(json)
+		if typeof(data) == "table" then
+			saveData = data
+		end
 	end
 end
 
