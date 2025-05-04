@@ -1,41 +1,28 @@
--- SaveManager.lua
 local HttpService = game:GetService("HttpService")
 local SaveManager = {}
 
-local baseFolderPath = "PrestineHub"
-local gameFolder = game.Name
-local fileName = "saveConfig.json"
-local fullPath = baseFolderPath .. "/" .. gameFolder .. "/" .. fileName
+local savePath = "DefaultGame"
+local saveData = {}
 
-local config = {}
+function SaveManager:Set(path)
+	savePath = path
+end
 
-function SaveManager:Load()
-    if isfile(fullPath) then
-        local success, result = pcall(function()
-            return HttpService:JSONDecode(readfile(fullPath))
-        end)
-        config = success and result or {}
-    else
-        config = {}
-    end
-    return config
+function SaveManager:SetValue(key, value)
+	saveData[key] = value
 end
 
 function SaveManager:Save()
-    if not isfolder(baseFolderPath) then makefolder(baseFolderPath) end
-    if not isfolder(baseFolderPath .. "/" .. gameFolder) then makefolder(baseFolderPath .. "/" .. gameFolder) end
-    writefile(fullPath, HttpService:JSONEncode(config))
+	local fullPath = savePath .. "/SavedConfig.json"
+	local json = HttpService:JSONEncode(saveData)
+	if writefile then
+		if isfolder then
+			if not isfolder(savePath) then
+				makefolder(savePath)
+			end
+		end
+		writefile(fullPath, json)
+	end
 end
-
-function SaveManager:Get(key, default)
-    return config[key] ~= nil and config[key] or default
-end
-
-function SaveManager:Set(key, value)
-    config[key] = value
-    self:Save()
-end
-
-SaveManager:Load()
 
 return SaveManager
