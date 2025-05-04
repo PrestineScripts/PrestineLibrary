@@ -9,11 +9,11 @@ function SaveManager:Set(path)
 end
 
 function SaveManager:SetValue(key, value)
-	saveData[key] = value
+	saveData[key] = tostring(value)
 end
 
 function SaveManager:Set(key, value)
-	saveData[key] = value
+	saveData[key] = tostring(value)
 end
 
 function SaveManager:Get(key, default)
@@ -21,23 +21,30 @@ function SaveManager:Get(key, default)
 end
 
 function SaveManager:Save()
-	local fullPath = savePath .. "/SavedConfig.json"
-	local json = HttpService:JSONEncode(saveData)
+	local fullPath = savePath .. "/SavedConfig.txt"
+	local lines = {}
+	for key, value in pairs(saveData) do
+		table.insert(lines, key .. "=" .. tostring(value))
+	end
+	local text = table.concat(lines, "\n")
 	if writefile then
 		if isfolder and not isfolder(savePath) then
 			makefolder(savePath)
 		end
-		writefile(fullPath, json)
+		writefile(fullPath, text)
 	end
 end
 
 function SaveManager:Load()
-	local fullPath = savePath .. "/SavedConfig.json"
+	local fullPath = savePath .. "/SavedConfig.txt"
 	if readfile and isfile and isfile(fullPath) then
-		local json = readfile(fullPath)
-		local data = HttpService:JSONDecode(json)
-		if typeof(data) == "table" then
-			saveData = data
+		local text = readfile(fullPath)
+		saveData = {}
+		for line in text:gmatch("[^\r\n]+") do
+			local key, value = line:match("^(.-)=(.*)$")
+			if key and value then
+				saveData[key] = value
+			end
 		end
 	end
 end
