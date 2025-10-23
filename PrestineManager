@@ -151,6 +151,13 @@ function PrestineManager.SetUpStarterUI()
 
     PrestineLib:AddSection({Tab = "Home", MainTitle = "Home"})
 
+    local messageParagraph = PrestineLib:AddParagraph({
+        Tab = "Home",
+        MainTitle = "Welcome!",
+        paragraphSize = 80,
+        MainContent = "Thank you for using my script. Please join my Discord server to receive updates, report any bugs or glitches, and share your suggestions."
+    })
+
     PrestineLib:AddButton({
         Tab = "Home",
         MainName = "Discord Link!",
@@ -167,13 +174,6 @@ function PrestineManager.SetUpStarterUI()
             setclipboard("https://www.youtube.com/@PrestineScripts")
             PrestineLib:AddNotification({TitleText="Prestine", ContentText="Succesfully Copied Youtube Link!", Duration=3})
         end
-    })
-
-    local messageParagraph = PrestineLib:AddParagraph({
-        Tab = "Home",
-        MainTitle = "Welcome!",
-        paragraphSize = 80,
-        MainContent = "Thank you for using my script. Please join my Discord server to receive updates, report any bugs or glitches, and share your suggestions."
     })
 
     PrestineLib:AddSection({Tab = "Home", MainTitle = "Status"})
