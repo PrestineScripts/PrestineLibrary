@@ -172,7 +172,7 @@ function PrestineManager.SetUpStarterUI()
     local messageParagraph = PrestineLib:AddParagraph({
         Tab = "Home",
         MainTitle = "Welcome!",
-        paragraphSize = 90,
+        paragraphSize = 80,
         MainContent = "Thank you for using my script. Please join my Discord server to receive updates, report any bugs or glitches, and share your suggestions."
     })
 
