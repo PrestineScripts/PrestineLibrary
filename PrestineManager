@@ -145,41 +145,51 @@ function PrestineManager.TravelToTarget(target)
     end
 end
 
-function PrestineManager.SetUpStarterUI()
+function PrestineManager.SetUpStarterUI(TabName)
     local PrestineLib = getgenv().PrestineLib
     local Hum = getgenv().Humanoid
 
-    PrestineLib:AddSection({Tab = "Home", MainTitle = "Home"})
+    TabName = TabName or "Home" -- fallback for weaklings who forget
+
+    PrestineLib:AddSection({Tab = TabName, MainTitle = TabName})
 
     local messageParagraph = PrestineLib:AddParagraph({
-        Tab = "Home",
+        Tab = TabName,
         MainTitle = "Welcome!",
         paragraphSize = 80,
         MainContent = "Thank you for using my script. Please join my Discord server to receive updates, report any bugs or glitches, and share your suggestions."
     })
 
     PrestineLib:AddButton({
-        Tab = "Home",
+        Tab = TabName,
         MainName = "Discord Link!",
         Callback = function()
             setclipboard("https://discord.gg/u2J38UJSBk")
-            PrestineLib:AddNotification({TitleText="Prestine", ContentText="Succesfully Copied Discord Link!", Duration=3})
+            PrestineLib:AddNotification({
+                TitleText = "Prestine",
+                ContentText = "Successfully Copied Discord Link!",
+                Duration = 3
+            })
         end
     })
 
     PrestineLib:AddButton({
-        Tab = "Home",
+        Tab = TabName,
         MainName = "Youtube Link!",
         Callback = function()
             setclipboard("https://www.youtube.com/@PrestineScripts")
-            PrestineLib:AddNotification({TitleText="Prestine", ContentText="Succesfully Copied Youtube Link!", Duration=3})
+            PrestineLib:AddNotification({
+                TitleText = "Prestine",
+                ContentText = "Successfully Copied Youtube Link!",
+                Duration = 3
+            })
         end
     })
 
-    PrestineLib:AddSection({Tab = "Home", MainTitle = "Status"})
+    PrestineLib:AddSection({Tab = TabName, MainTitle = "Status"})
 
     local statusParagraph = PrestineLib:AddParagraph({
-        Tab = "Home",
+        Tab = TabName,
         MainTitle = "Status",
         paragraphSize = 70,
         MainContent = ""
@@ -215,7 +225,7 @@ function PrestineManager.SetUpStarterUI()
         MainTitle = "Teleport Delay :",
         PlaceHolder = "Enter TP Delay (Number)",
         Callback = function(Value)
-            _G.teleportDelay = Value
+            _G.teleportDelay = tonumber(Value)
         end
     })
 
@@ -227,7 +237,11 @@ function PrestineManager.SetUpStarterUI()
 
     game:GetService("RunService").Heartbeat:Connect(function()
         local currentPlayers = #game.Players:GetPlayers()
-        statusParagraph:SetContent("Players : " .. currentPlayers .. "\nWalkspeed : " .. Hum.WalkSpeed .. "\nHealth : " .. Hum.Health .. "/" .. Hum.MaxHealth)
+        statusParagraph:SetContent(
+            "Players : " .. currentPlayers ..
+            "\nWalkspeed : " .. Hum.WalkSpeed ..
+            "\nHealth : " .. Hum.Health .. "/" .. Hum.MaxHealth
+        )
     end)
 end
 
