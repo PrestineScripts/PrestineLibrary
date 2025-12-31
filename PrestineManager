@@ -1,248 +1,262 @@
 local PrestineManager = {}
 
-function PrestineManager.TravelToTarget(target)
-    local player = game.Players.LocalPlayer
-    local character = player.Character or player.CharacterAdded:Wait()
-    local HRP = character:WaitForChild("HumanoidRootPart")
-    local Humanoid = character:WaitForChild("Humanoid")
-    local TweenService = game:GetService("TweenService")
-    local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-    local teleportDelay = _G.teleportDelay or 1
-    local targetCFrame
-    local isInstance = typeof(target) == "Instance" and target:IsA("BasePart")
+PrestineManager.Config = {
+	travelMethod = "Teleport",
+	tweenSpeed = 150,
+	teleportDelay = 1,
+	walkRetries = 2,
+	walkAgentRadius = 2,
+	walkAgentHeight = 5,
+	walkCanJump = true,
+	walkCanClimb = true
+}
 
-    if isInstance then
-        targetCFrame = target.CFrame
-    elseif typeof(target) == "CFrame" then
-        targetCFrame = target
-    elseif typeof(target) == "Vector3" then
-        targetCFrame = CFrame.new(target)
-    else
-        warn("Invalid target type:", typeof(target))
-        return
-    end
+PrestineManager._travelToken = 0
+PrestineManager._activeTween = nil
+PrestineManager._activeConn = nil
+PrestineManager._activeWeld = nil
+PrestineManager._activeTempPart = nil
+PrestineManager._lastSafeCFrame = nil
+PrestineManager._queue = {}
+PrestineManager._isRunningQueue = false
 
-    local targetPosition = targetCFrame.Position
-
-    if _G.travelMethod == "Teleport" then
-        HRP.CFrame = targetCFrame
-        wait(teleportDelay)
-
-    elseif _G.travelMethod == "Tween" then
-        local distance = (HRP.Position - targetPosition).Magnitude
-        local duration = distance / (_G.tweenSpeed or 150)
-
-        local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local goal = { CFrame = targetCFrame }
-        local tween = TweenService:Create(HRP, tweenInfo, goal)
-        tween:Play()
-        tween.Completed:Wait()
-
-    elseif _G.travelMethod == "Teleport2" then
-        if isInstance then
-            HRP.CFrame = targetCFrame
-
-            local weld = Instance.new("Weld")
-            weld.Part0 = target
-            weld.Part1 = HRP
-            weld.C0 = CFrame.new()
-            weld.Parent = target
-
-            wait(teleportDelay)
-
-            weld:Destroy()
-        else
-            local tempPart = Instance.new("Part")
-            tempPart.Size = Vector3.new(0.5, 0.5, 0.5)
-            tempPart.Transparency = 1
-            tempPart.Anchored = true
-            tempPart.CanCollide = false
-            tempPart.CFrame = targetCFrame
-            tempPart.Name = "TemporaryTeleportPart"
-            tempPart.Parent = workspace
-
-            HRP.CFrame = tempPart.CFrame
-
-            local weld = Instance.new("Weld")
-            weld.Part0 = tempPart
-            weld.Part1 = HRP
-            weld.C0 = CFrame.new()
-            weld.Parent = tempPart
-
-            wait(teleportDelay)
-
-            tempPart:Destroy()
-        end
-
-    elseif _G.travelMethod == "TweenXTeleport" then
-        local liftHeight = 25
-        local tweenSpeed = 20
-
-        local currentPosition = HRP.Position
-        local distanceToTarget = (currentPosition - targetPosition).Magnitude
-        local currentY = currentPosition.Y
-        local targetY = targetPosition.Y
-
-        if distanceToTarget > 200 then
-            local yDifference = currentY - targetY
-            if yDifference < liftHeight then
-                local desiredY = targetY + liftHeight
-                local upCFrame = CFrame.new(Vector3.new(currentPosition.X, desiredY, currentPosition.Z), targetPosition)
-                local upDistance = math.abs(desiredY - currentY)
-                local upDuration = upDistance / tweenSpeed
-
-                local upTweenInfo = TweenInfo.new(upDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                local upTween = TweenService:Create(HRP, upTweenInfo, { CFrame = upCFrame })
-                upTween:Play()
-                upTween.Completed:Wait()
-            end
-        end
-
-        local horizontalTarget = Vector3.new(targetPosition.X, HRP.Position.Y, targetPosition.Z)
-        local horizontalCFrame = CFrame.new(horizontalTarget, targetPosition)
-        local horizontalDistance = (HRP.Position - horizontalTarget).Magnitude
-        local horizontalDuration = horizontalDistance / tweenSpeed
-
-        local horizontalTweenInfo = TweenInfo.new(horizontalDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local horizontalTween = TweenService:Create(HRP, horizontalTweenInfo, { CFrame = horizontalCFrame })
-        horizontalTween:Play()
-        horizontalTween.Completed:Wait()
-        task.wait(0.5)
-
-        HRP.CFrame = targetCFrame
-        wait(teleportDelay)
-
-    elseif _G.travelMethod == "Walking" then
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 2,
-            AgentHeight = 5,
-            AgentCanJump = true,
-            AgentCanClimb = true,
-        })
-
-        path:ComputeAsync(HRP.Position, targetPosition)
-
-        if path.Status == Enum.PathStatus.Success then
-            local waypoints = path:GetWaypoints()
-
-            for i, waypoint in ipairs(waypoints) do
-                if waypoint.Action == Enum.PathWaypointAction.Jump then
-                    Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-
-                Humanoid:MoveTo(waypoint.Position)
-                local reached = Humanoid.MoveToFinished:Wait()
-
-                if not reached then
-                    warn("Failed to reach waypoint:", i)
-                    break
-                end
-            end
-        else
-            warn("Pathfinding failed:", path.Status)
-        end
-    end
+local function hasClipboard()
+	return typeof(setclipboard) == "function"
 end
 
-function PrestineManager.SetUpStarterUI(TabName)
-    local PrestineLib = getgenv().PrestineLib
-    local Hum = getgenv().Humanoid
-
-    TabName = TabName or "Home" -- fallback for weaklings who forget
-
-    PrestineLib:AddSection({Tab = TabName, MainTitle = TabName})
-
-    local messageParagraph = PrestineLib:AddParagraph({
-        Tab = TabName,
-        MainTitle = "Welcome!",
-        paragraphSize = 80,
-        MainContent = "Thank you for using my script. Please join my Discord server to receive updates, report any bugs or glitches, and share your suggestions."
-    })
-
-    PrestineLib:AddButton({
-        Tab = TabName,
-        MainName = "Discord Link!",
-        Callback = function()
-            setclipboard("https://discord.gg/u2J38UJSBk")
-            PrestineLib:AddNotification({
-                TitleText = "Prestine",
-                ContentText = "Successfully Copied Discord Link!",
-                Duration = 3
-            })
-        end
-    })
-
-    PrestineLib:AddButton({
-        Tab = TabName,
-        MainName = "Youtube Link!",
-        Callback = function()
-            setclipboard("https://www.youtube.com/@PrestineScripts")
-            PrestineLib:AddNotification({
-                TitleText = "Prestine",
-                ContentText = "Successfully Copied Youtube Link!",
-                Duration = 3
-            })
-        end
-    })
-
-    PrestineLib:AddSection({Tab = TabName, MainTitle = "Status"})
-
-    local statusParagraph = PrestineLib:AddParagraph({
-        Tab = TabName,
-        MainTitle = "Status",
-        paragraphSize = 70,
-        MainContent = ""
-    })
-
-    PrestineLib:AddSection({Tab = "Settings", MainTitle = "Settings"})
-
-    PrestineLib:AddDropdown({
-        Tab = "Settings",
-        MainTitle = "Select Travel Method",
-        ChoiceList = {"Teleport", "Tween", "Teleport2", "Walking"},
-        Multiple = false,
-        DefaultChoice = {"Teleport"},
-        Callback = function(Value)
-            _G.travelMethod = Value
-        end
-    })
-
-    PrestineLib:AddSlider({
-        Tab = "Settings",
-        SliderTitle = "Tween Speed :",
-        Min = 0,
-        Max = 300,
-        DefaultValue = 150,
-        Increment = 10,
-        Callback = function(Value)
-            _G.tweenSpeed = Value
-        end
-    })
-
-    PrestineLib:AddInput({
-        Tab = "Settings",
-        MainTitle = "Teleport Delay :",
-        PlaceHolder = "Enter TP Delay (Number)",
-        Callback = function(Value)
-            _G.teleportDelay = tonumber(Value)
-        end
-    })
-
-    PrestineLib:AddSaveToggle({
-        Tab = "Settings",
-        MainName = "Auto Save Config",
-        DefaultState = true
-    })
-
-    game:GetService("RunService").Heartbeat:Connect(function()
-        local currentPlayers = #game.Players:GetPlayers()
-        statusParagraph:SetContent(
-            "Players : " .. currentPlayers ..
-            "\nWalkspeed : " .. Hum.WalkSpeed ..
-            "\nHealth : " .. Hum.Health .. "/" .. Hum.MaxHealth
-        )
-    end)
+local function getCharacter()
+	local p = Players.LocalPlayer
+	if not p then return nil end
+	return p.Character or p.CharacterAdded:Wait()
 end
+
+local function getHumanoidAndHRP(character)
+	if not character then return nil, nil end
+	return character:FindFirstChildOfClass("Humanoid"), character:FindFirstChild("HumanoidRootPart")
+end
+
+local function toCFrame(target)
+	local t = typeof(target)
+	if t == "CFrame" then
+		return target
+	elseif t == "Vector3" then
+		return CFrame.new(target)
+	elseif t == "Instance" and target:IsA("BasePart") then
+		return target.CFrame, target
+	end
+	return nil
+end
+
+local function clamp(n, a, b, d)
+	n = tonumber(n)
+	if not n then return d end
+	if a then n = math.max(a, n) end
+	if b then n = math.min(b, n) end
+	return n
+end
+
+function PrestineManager:SetConfig(k, v)
+	if self.Config[k] == nil then return end
+	if k == "tweenSpeed" then
+		self.Config.tweenSpeed = clamp(v, 1, 10000, self.Config.tweenSpeed)
+	elseif k == "teleportDelay" then
+		self.Config.teleportDelay = clamp(v, 0, 60, self.Config.teleportDelay)
+	elseif k == "walkRetries" then
+		self.Config.walkRetries = math.floor(clamp(v, 0, 10, self.Config.walkRetries))
+	elseif k == "travelMethod" then
+		self.Config.travelMethod = tostring(v)
+	else
+		self.Config[k] = v
+	end
+end
+
+function PrestineManager:CancelTravel()
+	self._travelToken += 1
+	if self._activeTween then pcall(function() self._activeTween:Cancel() end) end
+	if self._activeConn then self._activeConn:Disconnect() end
+	if self._activeWeld then pcall(function() self._activeWeld:Destroy() end) end
+	if self._activeTempPart then pcall(function() self._activeTempPart:Destroy() end) end
+	self._activeTween = nil
+	self._activeConn = nil
+	self._activeWeld = nil
+	self._activeTempPart = nil
+end
+
+function PrestineManager:SavePosition()
+	local c = getCharacter()
+	if c then self._lastSafeCFrame = c:GetPivot() end
+end
+
+function PrestineManager:ReturnToSaved()
+	if not self._lastSafeCFrame then return end
+	local c = getCharacter()
+	if c then c:PivotTo(self._lastSafeCFrame) end
+end
+
+function PrestineManager:AddToQueue(target)
+	table.insert(self._queue, target)
+end
+
+function PrestineManager:ClearQueue()
+	self._queue = {}
+end
+
+function PrestineManager:RunQueue()
+	if self._isRunningQueue then return end
+	self._isRunningQueue = true
+	for _,t in ipairs(self._queue) do
+		local ok = self:TravelToTarget(t)
+		if not ok then break end
+	end
+	self._queue = {}
+	self._isRunningQueue = false
+end
+
+local function tweenPivot(self, character, goal, speed, token)
+	local hum, hrp = getHumanoidAndHRP(character)
+	if not hrp then return false end
+	local dist = (hrp.Position - goal.Position).Magnitude
+	local dur = dist / clamp(speed,1,100000,150)
+	local cfv = Instance.new("CFrameValue")
+	cfv.Value = character:GetPivot()
+	local anchored = hrp.Anchored
+	hrp.Anchored = true
+	self._activeConn = cfv:GetPropertyChangedSignal("Value"):Connect(function()
+		if token ~= self._travelToken then return end
+		if character and character.Parent then character:PivotTo(cfv.Value) end
+	end)
+	self._activeTween = TweenService:Create(cfv, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = goal})
+	self._activeTween:Play()
+	while token == self._travelToken and self._activeTween.PlaybackState == Enum.PlaybackState.Playing do
+		RunService.Heartbeat:Wait()
+	end
+	if self._activeConn then self._activeConn:Disconnect() end
+	self._activeConn = nil
+	self._activeTween = nil
+	cfv:Destroy()
+	if hrp then hrp.Anchored = anchored end
+	return token == self._travelToken
+end
+
+local function walk(self, character, pos, token)
+	local hum, hrp = getHumanoidAndHRP(character)
+	if not hum or not hrp then return false end
+	for _ = 1, self.Config.walkRetries + 1 do
+		if token ~= self._travelToken then return false end
+		local path = PathfindingService:CreatePath({
+			AgentRadius = self.Config.walkAgentRadius,
+			AgentHeight = self.Config.walkAgentHeight,
+			AgentCanJump = self.Config.walkCanJump,
+			AgentCanClimb = self.Config.walkCanClimb
+		})
+		pcall(function() path:ComputeAsync(hrp.Position, pos) end)
+		if path.Status == Enum.PathStatus.Success then
+			for _,wp in ipairs(path:GetWaypoints()) do
+				if token ~= self._travelToken then return false end
+				if wp.Action == Enum.PathWaypointAction.Jump then
+					hum:ChangeState(Enum.HumanoidStateType.Jumping)
+				end
+				hum:MoveTo(wp.Position)
+				if not hum.MoveToFinished:Wait() then break end
+			end
+			return true
+		end
+	end
+	return false
+end
+
+function PrestineManager:TravelToTarget(target)
+	self:CancelTravel()
+	self._travelToken += 1
+	local token = self._travelToken
+	local character = getCharacter()
+	if not character then return false end
+	local cf, part = toCFrame(target)
+	if not cf then return false end
+	if self.Config.travelMethod == "Teleport" then
+		character:PivotTo(cf)
+		task.wait(self.Config.teleportDelay)
+		return token == self._travelToken
+	elseif self.Config.travelMethod == "Tween" then
+		return tweenPivot(self, character, cf, self.Config.tweenSpeed, token)
+	elseif self.Config.travelMethod == "Walking" then
+		return walk(self, character, cf.Position, token)
+	end
+	return false
+end
+
+function PrestineManager:SetUpStarterUI(tab)
+	local PrestineLib = getgenv().PrestineLib
+	if not PrestineLib then return end
+	tab = tab or "Home"
+	PrestineLib:AddSection({Tab = tab, MainTitle = "Prestine"})
+	PrestineLib:AddParagraph({
+		Tab = tab,
+		MainTitle = "Welcome",
+		paragraphSize = 100,
+		MainContent = "Prestine universal manager. Use quick panel, queue system, profiles, and safe travel modes."
+	})
+	PrestineLib:AddButton({
+		Tab = tab,
+		MainName = "Copy Discord",
+		Callback = function()
+			if hasClipboard() then setclipboard("https://discord.gg/u2J38UJSBk") end
+		end
+	})
+	PrestineLib:AddSection({Tab = "Settings", MainTitle = "Travel"})
+	PrestineLib:AddDropdown({
+		Tab = "Settings",
+		MainTitle = "Method",
+		ChoiceList = {"Teleport","Tween","Walking"},
+		DefaultChoice = {self.Config.travelMethod},
+		Callback = function(v) self:SetConfig("travelMethod", v) end
+	})
+	PrestineLib:AddSlider({
+		Tab = "Settings",
+		SliderTitle = "Tween Speed",
+		Min = 1,
+		Max = 600,
+		DefaultValue = self.Config.tweenSpeed,
+		Increment = 5,
+		Callback = function(v) self:SetConfig("tweenSpeed", v) end
+	})
+	PrestineLib:AddInput({
+		Tab = "Settings",
+		MainTitle = "Teleport Delay",
+		PlaceHolder = "Seconds",
+		Callback = function(v) self:SetConfig("teleportDelay", v) end
+	})
+	PrestineLib:AddSection({Tab = "Quick", MainTitle = "Quick Panel"})
+	PrestineLib:AddButton({Tab="Quick",MainName="Save Position",Callback=function() self:SavePosition() end})
+	PrestineLib:AddButton({Tab="Quick",MainName="Return Position",Callback=function() self:ReturnToSaved() end})
+	PrestineLib:AddButton({Tab="Quick",MainName="Cancel Travel",Callback=function() self:CancelTravel() end})
+	local status = PrestineLib:AddParagraph({Tab="Quick",MainTitle="Status",paragraphSize=90,MainContent=""})
+	task.spawn(function()
+		while status do
+			local c = Players.LocalPlayer.Character
+			local h = c and c:FindFirstChildOfClass("Humanoid")
+			status:SetContent(
+				"Players: "..#Players:GetPlayers()..
+				"\nHealth: "..(h and math.floor(h.Health) or 0)..
+				"\nMethod: "..self.Config.travelMethod..
+				"\nQueue: "..#self._queue
+			)
+			task.wait(0.3)
+		end
+	end)
+end
+
+UserInputService.InputBegan:Connect(function(i,g)
+	if g then return end
+	if i.KeyCode == Enum.KeyCode.X then PrestineManager:CancelTravel() end
+	if i.KeyCode == Enum.KeyCode.B then PrestineManager:SavePosition() end
+	if i.KeyCode == Enum.KeyCode.N then PrestineManager:ReturnToSaved() end
+end)
 
 return PrestineManager
