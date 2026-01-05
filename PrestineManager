@@ -615,7 +615,7 @@ function PrestineManager:SetUpStarterUI()
 
 	PrestineLib:AddToggle({
 		Tab = "Spy",
-		MainTitle = "Enable Spy POV",
+		MainName = "Enable Spy POV",
 		DefaultState = false,
 		Callback = function(state)
 			PrestineManager._spyEnabled = state
