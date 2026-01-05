@@ -599,19 +599,22 @@ function PrestineManager:SetUpStarterUI()
 
 	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
 
+	local names = getPlayerNames()
 	PrestineLib:AddDropdown({
-		Tab = "Player",
-		MainTitle = "Select Player",
-		ChoiceList = getPlayerNames(),
-		Multiple = false,
-		Callback = function(v)
-			local name = typeof(v) == "table" and v[1] or v
-			PrestineManager._spyTarget = Players:FindFirstChild(name)
-			if PrestineManager._spyEnabled and PrestineManager._spyTarget then
-				setCameraToPlayer(PrestineManager._spyTarget)
-			end
-		end
+	    Tab = "Player",
+	    MainTitle = "Select Player",
+	    ChoiceList = names,
+	    DefaultChoice = names[1] or "None",
+	    Multiple = false,
+	    Callback = function(v)
+	        local name = typeof(v) == "table" and v[1] or v
+	        PrestineManager._spyTarget = Players:FindFirstChild(name)
+	        if PrestineManager._spyEnabled and PrestineManager._spyTarget then
+	            setCameraToPlayer(PrestineManager._spyTarget)
+	        end
+	    end
 	})
+
 
 	PrestineLib:AddToggle({
 		Tab = "Player",
@@ -654,7 +657,7 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Player",
 		MainTitle = "Join Server Type",
 		ChoiceList = { "Lowest", "Max", "Full" },
-		DefaultChoice = { "Lowest" },
+		DefaultChoice = "Lowest",
 		Multiple = false,
 		Callback = function(v)
 			PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
@@ -683,7 +686,7 @@ function PrestineManager:SetUpStarterUI()
 		MainTitle = "Travel Method",
 		ChoiceList = { "Teleport", "Tween", "Walking" },
 		Multiple = false,
-		DefaultChoice = { self.Config.TravelMethod },
+		DefaultChoice = tostring(self.Config.TravelMethod),
 		Callback = function(v)
 			local m = typeof(v) == "table" and v[1] or v
 			if not isValidMethod(m) then m = "Teleport" end
