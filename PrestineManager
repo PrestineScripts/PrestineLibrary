@@ -423,13 +423,10 @@ function PrestineManager:SetUpStarterUI()
 		end
 	})
 
-	PrestineLib:AddButton({
-		Tab = "Settings",
-		MainName = "Apply Default Profile",
-		Callback = function()
-			self:ApplyProfile("Default")
-			self:_notify(PrestineLib, "Profile", "Applied Default profile.", 2)
-		end
+	PrestineLib:AddSaveToggle({
+	    Tab = "Settings",
+	    MainName = "Auto Save Config",
+	    DefaultState = true
 	})
 
 	if self._uiConn then self._uiConn:Disconnect() end
