@@ -47,7 +47,7 @@ PrestineManager._fps = 0
 PrestineManager._fpsFrames = 0
 PrestineManager._fpsLast = os.clock()
 
-PrestineManager._originalCameraSubject = Camera.CameraSubject
+PrestineManager._prevCameraSubject = nil
 PrestineManager._serverJoinMode = "Lowest"
 PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
@@ -622,6 +622,7 @@ function PrestineManager:SetUpStarterUI()
 			end
 		end
 	})
+
 	
 	if PrestineManager._infJumpConn then PrestineManager._infJumpConn:Disconnect() end
 	PrestineManager._infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
