@@ -323,6 +323,19 @@ function PrestineManager:_bindCharacterSafety()
 		end)
 	end
 end
+local function getServerInfoText()
+	local gameName = game.Name
+	local gameId = game.GameId
+	local jobId = game.JobId
+	local playerCount = #Players:GetPlayers()
+	local maxPlayers = Players.MaxPlayers
+
+	return
+		"Game Name: " .. tostring(gameName) ..
+		"\nGame ID: " .. tostring(gameId) ..
+		"\nServer ID: " .. (jobId ~= "" and jobId or "Private Server") ..
+		"\nPlayers: " .. tostring(playerCount) .. "/" .. tostring(maxPlayers)
+end
 
 function PrestineManager:SetUpStarterUI()
 	local PrestineLib = getgenv().PrestineLib
@@ -359,6 +372,13 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	self._statusParagraph = PrestineLib:AddParagraph({
+		Tab = "Home",
+		MainTitle = "Character Status",
+		paragraphSize = 140,
+		MainContent = "Loading..."
+	})
+
+	self._serverStatusParagraph = PrestineLib:AddParagraph({
 		Tab = "Home",
 		MainTitle = "Character Status",
 		paragraphSize = 140,
@@ -462,6 +482,11 @@ function PrestineManager:SetUpStarterUI()
 				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
 			end
 			return
+		end
+
+		if self._serverStatusParagraph then
+			local serverText = getServerInfoText()
+			self:_trySetParagraphContent(self._serverStatusParagraph, serverText)
 		end
 
 		local ok = self:_trySetParagraphContent(self._statusParagraph, text)
