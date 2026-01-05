@@ -34,8 +34,11 @@ PrestineManager._activeTween = nil
 PrestineManager._uiConn = nil
 PrestineManager._charConn = nil
 PrestineManager._deathConn = nil
+PrestineManager._fpsConn = nil
 
 PrestineManager._statusParagraph = nil
+PrestineManager._serverStatusParagraph = nil
+PrestineManager._perfParagraph = nil
 PrestineManager._statusSupportsUpdate = nil
 PrestineManager._lastStatusText = ""
 PrestineManager._lastStatusWarned = false
@@ -209,22 +212,28 @@ function PrestineManager:_travel(cf, token)
 					if moveConn then moveConn:Disconnect() end
 					return
 				end
+
 				if os.clock() - t0 > 3.0 then
 					if moveConn then moveConn:Disconnect() end
+
 					path:ComputeAsync(hrp.Position, cf.Position)
 					if path.Status == Enum.PathStatus.Success then
 						for _, wp2 in ipairs(path:GetWaypoints()) do
 							if token ~= self._token then return end
+
 							if wp2.Action == Enum.PathWaypointAction.Jump then
 								hum:ChangeState(Enum.HumanoidStateType.Jumping)
 							end
+
 							local reached2 = false
 							local c2
 							c2 = hum.MoveToFinished:Connect(function()
 								reached2 = true
 								if c2 then c2:Disconnect() end
 							end)
+
 							hum:MoveTo(wp2.Position)
+
 							local t1 = os.clock()
 							while not reached2 do
 								if token ~= self._token then
@@ -239,8 +248,10 @@ function PrestineManager:_travel(cf, token)
 							end
 						end
 					end
+
 					return
 				end
+
 				task.wait(0.05)
 			end
 		end
@@ -332,16 +343,13 @@ function PrestineManager:_bindCharacterSafety()
 	end
 end
 
-local MarketplaceService = game:GetService("MarketplaceService")
-
 local function getServerInfoText()
 	local serverType =
 		game.PrivateServerId ~= "" and
 		(game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved") or
 		"Public"
 
-	return
-		"Game Name: " .. game.Name ..
+	return "Game Name: " .. game.Name ..
 		"\nPlace ID: " .. game.PlaceId ..
 		"\nGame ID: " .. game.GameId ..
 		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
@@ -353,15 +361,8 @@ local function getServerInfoText()
 end
 
 local function getPerformanceText(self)
-	return
-		"FPS: " .. tostring(self._fps) ..
+	return "FPS: " .. tostring(self._fps) ..
 		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
-end
-
-local function getExtraCharacterInfo(hum, hrp)
-	return
-		"State: " .. hum:GetState().Name ..
-		"\nRoot Anchored: " .. tostring(hrp.Anchored)
 end
 
 function PrestineManager:SetUpStarterUI()
@@ -411,7 +412,7 @@ function PrestineManager:SetUpStarterUI()
 		paragraphSize = 160,
 		MainContent = "Loading..."
 	})
-	
+
 	self._perfParagraph = PrestineLib:AddParagraph({
 		Tab = "Home",
 		MainTitle = "Performance",
@@ -478,84 +479,74 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddSaveToggle({
-	    Tab = "Settings",
-	    MainName = "Auto Save Config",
-	    DefaultState = true
+		Tab = "Settings",
+		MainName = "Auto Save Config",
+		DefaultState = true
 	})
 
 	if self._uiConn then self._uiConn:Disconnect() end
+	self._uiConn = RunService.Heartbeat:Connect(function()
+		local char = player.Character
+		if not char then return end
 
-self._uiConn = RunService.Heartbeat:Connect(function()
-	local char = player.Character
-	if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hum then return end
 
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hum then return end
+		local ws = hum.WalkSpeed
+		local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
+		local hp = hum.Health
+		local mhp = hum.MaxHealth
 
-	local ws = hum.WalkSpeed
-	local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
-	local hp = hum.Health
-	local mhp = hum.MaxHealth
+		local statusText =
+			"Task: " .. tostring(self.State.CurrentTask) ..
+			"\nQueue: " .. #self._queue ..
+			"\nMethod: " .. self.Config.TravelMethod ..
+			"\nTweenSpeed: " .. self.Config.TweenSpeed ..
+			"\nTeleportDelay: " .. self.Config.TeleportDelay ..
+			"\nWalkSpeed: " .. ws ..
+			"\nJump: " .. jp ..
+			"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
 
-	local statusText =
-		"Task: " .. tostring(self.State.CurrentTask) ..
-		"\nQueue: " .. #self._queue ..
-		"\nMethod: " .. self.Config.TravelMethod ..
-		"\nTweenSpeed: " .. self.Config.TweenSpeed ..
-		"\nTeleportDelay: " .. self.Config.TeleportDelay ..
-		"\nWalkSpeed: " .. ws ..
-		"\nJump: " .. jp ..
-		"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
-
-	if hrp then
-		statusText ..=
-			"\nState: " .. hum:GetState().Name ..
-			"\nRoot Anchored: " .. tostring(hrp.Anchored)
-	end
-
-	if statusText ~= self._lastStatusText then
-		self._lastStatusText = statusText
-		local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
-		if not ok and not self._lastStatusWarned then
-			self._lastStatusWarned = true
-			self:_notify(
-				PrestineLib,
-				"Notice",
-				"Status paragraph cannot be updated by this PrestineLib build.",
-				4
-			)
+		if hrp then
+			statusText ..=
+				"\nState: " .. hum:GetState().Name ..
+				"\nRoot Anchored: " .. tostring(hrp.Anchored)
 		end
-	end
 
-	if os.clock() - self._lastServerUpdate >= 1 then
-		self._lastServerUpdate = os.clock()
-		if self._serverStatusParagraph then
-			self:_trySetParagraphContent(
-				self._serverStatusParagraph,
-				getServerInfoText()
-			)
+		if statusText ~= self._lastStatusText then
+			self._lastStatusText = statusText
+			local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
+			if not ok and not self._lastStatusWarned then
+				self._lastStatusWarned = true
+				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
+			end
 		end
-	end
 
-	if os.clock() - self._lastPerfUpdate >= 0.5 then
-		self._lastPerfUpdate = os.clock()
-		if self._perfParagraph then
-			self:_trySetParagraphContent(
-				self._perfParagraph,
-				getPerformanceText(self)
-			)
+		if os.clock() - self._lastServerUpdate >= 1 then
+			self._lastServerUpdate = os.clock()
+			if self._serverStatusParagraph then
+				self:_trySetParagraphContent(self._serverStatusParagraph, getServerInfoText())
+			end
 		end
-	end
-end)
 
-RunService.RenderStepped:Connect(function()
-	PrestineManager._fpsFrames += 1
-	if os.clock() - PrestineManager._fpsLast >= 1 then
-		PrestineManager._fps = PrestineManager._fpsFrames
-		PrestineManager._fpsFrames = 0
-		PrestineManager._fpsLast = os.clock()
-	end
-end)
+		if os.clock() - self._lastPerfUpdate >= 0.5 then
+			self._lastPerfUpdate = os.clock()
+			if self._perfParagraph then
+				self:_trySetParagraphContent(self._perfParagraph, getPerformanceText(self))
+			end
+		end
+	end)
+
+	if self._fpsConn then self._fpsConn:Disconnect() end
+	self._fpsConn = RunService.RenderStepped:Connect(function()
+		PrestineManager._fpsFrames += 1
+		if os.clock() - PrestineManager._fpsLast >= 1 then
+			PrestineManager._fps = PrestineManager._fpsFrames
+			PrestineManager._fpsFrames = 0
+			PrestineManager._fpsLast = os.clock()
+		end
+	end)
+end
 
 return PrestineManager
