@@ -600,7 +600,7 @@ function PrestineManager:SetUpStarterUI()
 	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
 
 	PrestineLib:AddDropdown({
-		Tab = "Spy",
+		Tab = "Player",
 		MainTitle = "Select Player",
 		ChoiceList = getPlayerNames(),
 		Multiple = false,
@@ -614,7 +614,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddToggle({
-		Tab = "Spy",
+		Tab = "Player",
 		MainName = "Enable Spy POV",
 		DefaultState = false,
 		Callback = function(state)
