@@ -547,13 +547,4 @@ self._uiConn = RunService.Heartbeat:Connect(function()
 	end
 end)
 
-RunService.RenderStepped:Connect(function()
-	PrestineManager._fpsFrames += 1
-	if os.clock() - PrestineManager._fpsLast >= 1 then
-		PrestineManager._fps = PrestineManager._fpsFrames
-		PrestineManager._fpsFrames = 0
-		PrestineManager._fpsLast = os.clock()
-	end
-end)
-
 return PrestineManager
