@@ -1,7 +1,5 @@
 local PrestineManager = {}
 
-print("hey")
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local PathfindingService = game:GetService("PathfindingService")
@@ -343,6 +341,25 @@ function PrestineManager:_bindCharacterSafety()
 	end
 end
 
+local function formatUptime(seconds)
+	seconds = math.floor(seconds)
+
+	local s = seconds % 60
+	local m = math.floor(seconds / 60) % 60
+	local h = math.floor(seconds / 3600) % 24
+	local d = math.floor(seconds / 86400) % 7
+	local w = math.floor(seconds / 604800)
+
+	local parts = {}
+	if w > 0 then table.insert(parts, w .. "w") end
+	if d > 0 then table.insert(parts, d .. "d") end
+	if h > 0 then table.insert(parts, h .. "h") end
+	if m > 0 then table.insert(parts, m .. "m") end
+	table.insert(parts, s .. "s")
+
+	return table.concat(parts, " ")
+end
+
 local function getServerInfoText()
 	local serverType =
 		game.PrivateServerId ~= "" and
@@ -355,7 +372,7 @@ local function getServerInfoText()
 		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
 		"\nServer Type: " .. serverType ..
 		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
-		"\nUptime: " .. math.floor(workspace:GetServerTimeNow()) .. "s" ..
+		"\nUptime: " .. formatUptime(workspace:GetServerTimeNow()) ..
 		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
 		"\nGravity: " .. tostring(workspace.Gravity)
 end
