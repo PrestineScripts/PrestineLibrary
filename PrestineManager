@@ -615,15 +615,26 @@ function PrestineManager:SetUpStarterUI()
 		DefaultState = false,
 		Callback = function(state)
 			PrestineManager._spyEnabled = state
-			if state and PrestineManager._spyTarget then
-				setCameraToPlayer(PrestineManager._spyTarget)
+	
+			local cam = workspace.CurrentCamera
+			if not cam then return end
+	
+			if state then
+				PrestineManager._prevCameraSubject = cam.CameraSubject
+	
+				if PrestineManager._spyTarget then
+					setCameraToPlayer(PrestineManager._spyTarget)
+				end
 			else
-				resetCamera()
+				if PrestineManager._prevCameraSubject then
+					cam.CameraSubject = PrestineManager._prevCameraSubject
+				else
+					resetCamera()
+				end
 			end
 		end
 	})
 
-	
 	if PrestineManager._infJumpConn then PrestineManager._infJumpConn:Disconnect() end
 	PrestineManager._infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
 		if not PrestineManager._infJump then return end
