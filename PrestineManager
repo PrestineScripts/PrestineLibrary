@@ -1,3 +1,5 @@
+--// PrestineManager (Home + Settings only, Quick Panel removed)
+
 local PrestineManager = {}
 
 local Players = game:GetService("Players")
@@ -11,7 +13,6 @@ PrestineManager.Config = {
 	TravelMethod = "Teleport",
 	TweenSpeed = 150,
 	TeleportDelay = 0,
-	QuickPanel = true
 }
 
 PrestineManager.Profiles = {
@@ -31,7 +32,11 @@ PrestineManager._token = 0
 PrestineManager._queue = {}
 PrestineManager._activeTween = nil
 PrestineManager._conn = nil
+PrestineManager._uiConn = nil
 
+--========================
+-- Helpers
+--========================
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -51,6 +56,22 @@ local function toCFrame(target)
 	end
 end
 
+local function safeNum(v)
+	return tonumber(v)
+end
+
+local function setClipboard(text)
+	-- Works in most executors; harmless if unsupported
+	if setclipboard then
+		pcall(function() setclipboard(text) end)
+	elseif toclipboard then
+		pcall(function() toclipboard(text) end)
+	end
+end
+
+--========================
+-- Config
+--========================
 function PrestineManager:ApplyProfile(name)
 	local p = self.Profiles[name]
 	if not p then return end
@@ -65,13 +86,22 @@ function PrestineManager:SetConfig(k, v)
 	end
 end
 
+--========================
+-- Control
+--========================
 function PrestineManager:Cancel()
 	self._token += 1
 	self._queue = {}
 	self.State.Busy = false
 	self.State.CurrentTask = "Cancelled"
-	if self._activeTween then pcall(function() self._activeTween:Cancel() end) end
-	if self._conn then self._conn:Disconnect() end
+
+	if self._activeTween then
+		pcall(function() self._activeTween:Cancel() end)
+	end
+	if self._conn then
+		self._conn:Disconnect()
+	end
+
 	self._activeTween = nil
 	self._conn = nil
 end
@@ -84,6 +114,9 @@ function PrestineManager:ClearQueue()
 	self._queue = {}
 end
 
+--========================
+-- Movement
+--========================
 function PrestineManager:_travel(cf, token)
 	local hum, hrp = getHumanoidRoot()
 	local method = self.Config.TravelMethod
@@ -104,17 +137,35 @@ function PrestineManager:_travel(cf, token)
 
 		self._activeTween = tween
 		tween:Play()
-		tween.Completed:Wait()
+
+		-- Token-aware wait
+		local completed = false
+		local c
+		c = tween.Completed:Connect(function()
+			completed = true
+			if c then c:Disconnect() end
+		end)
+
+		while not completed do
+			if token ~= self._token then
+				pcall(function() tween:Cancel() end)
+				break
+			end
+			task.wait()
+		end
 
 	elseif method == "Walking" then
 		local path = PathfindingService:CreatePath()
 		path:ComputeAsync(hrp.Position, cf.Position)
+
 		if path.Status == Enum.PathStatus.Success then
 			for _, wp in ipairs(path:GetWaypoints()) do
 				if token ~= self._token then return end
+
 				if wp.Action == Enum.PathWaypointAction.Jump then
 					hum:ChangeState(Enum.HumanoidStateType.Jumping)
 				end
+
 				hum:MoveTo(wp.Position)
 				hum.MoveToFinished:Wait()
 			end
@@ -158,59 +209,51 @@ function PrestineManager:TravelMultiple(list)
 	self:StartQueue()
 end
 
+--========================
+-- UI (Home + Settings only)
+--========================
 function PrestineManager:SetUpStarterUI()
 	local PrestineLib = getgenv().PrestineLib
 	if not PrestineLib then return end
 
+	-- HOME
 	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home" })
-
-	local status = PrestineLib:AddParagraph({
-		Tab = "Home",
-		MainTitle = "Status",
-		paragraphSize = 80,
-		MainContent = "Idle"
-	})
 
 	PrestineLib:AddButton({
 		Tab = "Home",
-		MainName = "Cancel Current Task",
+		MainName = "Copy YouTube",
 		Callback = function()
-			PrestineLib:Confirm({
-				Title = "Confirm",
-				Content = "Cancel current movement?",
-				Keybinds = true,
-				Blur = true,
-				OnConfirm = function()
-					PrestineManager:Cancel()
-				end
+			setClipboard("YOUR_YOUTUBE_LINK_HERE")
+			PrestineLib:AddNotification({
+				TitleText = "Copied",
+				ContentText = "YouTube link copied to clipboard.",
+				Duration = 2
 			})
 		end
 	})
 
-	if self.Config.QuickPanel then
-		PrestineLib:AddSection({ Tab = "Quick", MainTitle = "Quick Panel" })
+	PrestineLib:AddButton({
+		Tab = "Home",
+		MainName = "Copy Discord",
+		Callback = function()
+			setClipboard("YOUR_DISCORD_INVITE_HERE")
+			PrestineLib:AddNotification({
+				TitleText = "Copied",
+				ContentText = "Discord invite copied to clipboard.",
+				Duration = 2
+			})
+		end
+	})
 
-		PrestineLib:AddButton({
-			Tab = "Quick",
-			MainName = "Cancel",
-			Callback = function()
-				PrestineManager:Cancel()
-			end
-		})
+	local status = PrestineLib:AddParagraph({
+		Tab = "Home",
+		MainTitle = "Character Status",
+		paragraphSize = 120,
+		MainContent = "Loading..."
+	})
 
-		PrestineLib:AddDropdown({
-			Tab = "Quick",
-			MainTitle = "Method",
-			ChoiceList = { "Teleport", "Tween", "Walking" },
-			Multiple = false,
-			DefaultChoice = { self.Config.TravelMethod },
-			Callback = function(v)
-				self.Config.TravelMethod = typeof(v) == "table" and v[1] or v
-			end
-		})
-	end
-
-	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement" })
+	-- SETTINGS
+	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Settings" })
 
 	PrestineLib:AddDropdown({
 		Tab = "Settings",
@@ -238,20 +281,38 @@ function PrestineManager:SetUpStarterUI()
 	PrestineLib:AddInput({
 		Tab = "Settings",
 		MainTitle = "Teleport Delay",
-		PlaceHolder = "Seconds",
+		PlaceHolder = "Seconds (0 - 10)",
 		Callback = function(v)
-			local n = tonumber(v)
-			if n then self.Config.TeleportDelay = math.clamp(n, 0, 10) end
+			local n = safeNum(v)
+			if n then
+				self.Config.TeleportDelay = math.clamp(n, 0, 10)
+			end
 		end
 	})
 
-	RunService.Heartbeat:Connect(function()
-		status:SetContent(
-			"State: " .. self.State.CurrentTask ..
-			"\nQueued: " .. tostring(#self._queue) ..
-			"\nMethod: " .. self.Config.TravelMethod ..
-			"\nSpeed: " .. tostring(self.Config.TweenSpeed)
-		)
+	-- Live status updater
+	if self._uiConn then
+		self._uiConn:Disconnect()
+	end
+
+	self._uiConn = RunService.Heartbeat:Connect(function()
+		local hum, _ = getHumanoidRoot()
+
+		local ws = hum.WalkSpeed
+		local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
+		local hp = hum.Health
+		local mhp = hum.MaxHealth
+
+		-- Only update if the paragraph object supports SetContent (prevents hard error)
+		if status and status.SetContent then
+			status:SetContent(
+				"Task: " .. tostring(self.State.CurrentTask) ..
+				"\nQueue: " .. tostring(#self._queue) ..
+				"\nWalkSpeed: " .. tostring(ws) ..
+				"\nJump: " .. tostring(jp) ..
+				"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
+			)
+		end
 	end)
 end
 
