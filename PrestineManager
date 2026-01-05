@@ -1,5 +1,3 @@
---// PrestineManager (Home + Settings only, Quick Panel removed)
-
 local PrestineManager = {}
 
 local Players = game:GetService("Players")
@@ -13,13 +11,15 @@ PrestineManager.Config = {
 	TravelMethod = "Teleport",
 	TweenSpeed = 150,
 	TeleportDelay = 0,
+	ShowDebugStatus = true
 }
 
 PrestineManager.Profiles = {
 	Default = {
 		TravelMethod = "Teleport",
 		TweenSpeed = 150,
-		TeleportDelay = 0
+		TeleportDelay = 0,
+		ShowDebugStatus = true
 	}
 }
 
@@ -31,12 +31,15 @@ PrestineManager.State = {
 PrestineManager._token = 0
 PrestineManager._queue = {}
 PrestineManager._activeTween = nil
-PrestineManager._conn = nil
 PrestineManager._uiConn = nil
+PrestineManager._charConn = nil
+PrestineManager._deathConn = nil
 
---========================
--- Helpers
---========================
+PrestineManager._statusParagraph = nil
+PrestineManager._statusSupportsUpdate = nil
+PrestineManager._lastStatusText = ""
+PrestineManager._lastStatusWarned = false
+
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -56,54 +59,53 @@ local function toCFrame(target)
 	end
 end
 
-local function safeNum(v)
-	return tonumber(v)
+local function isValidMethod(m)
+	return m == "Teleport" or m == "Tween" or m == "Walking"
 end
 
 local function setClipboard(text)
-	-- Works in most executors; harmless if unsupported
 	if setclipboard then
-		pcall(function() setclipboard(text) end)
+		local ok = pcall(function() setclipboard(text) end)
+		return ok
 	elseif toclipboard then
-		pcall(function() toclipboard(text) end)
+		local ok = pcall(function() toclipboard(text) end)
+		return ok
 	end
+	return false
 end
 
---========================
--- Config
---========================
+local function clampNumber(v, lo, hi)
+	local n = tonumber(v)
+	if not n then return nil end
+	return math.clamp(n, lo, hi)
+end
+
 function PrestineManager:ApplyProfile(name)
 	local p = self.Profiles[name]
 	if not p then return end
 	for k, v in pairs(p) do
 		self.Config[k] = v
 	end
-end
-
-function PrestineManager:SetConfig(k, v)
-	if self.Config[k] ~= nil then
-		self.Config[k] = v
+	if not isValidMethod(self.Config.TravelMethod) then
+		self.Config.TravelMethod = "Teleport"
 	end
 end
 
---========================
--- Control
---========================
+function PrestineManager:SetConfig(k, v)
+	if self.Config[k] == nil then return end
+	self.Config[k] = v
+	if k == "TravelMethod" and not isValidMethod(self.Config.TravelMethod) then
+		self.Config.TravelMethod = "Teleport"
+	end
+end
+
 function PrestineManager:Cancel()
 	self._token += 1
 	self._queue = {}
 	self.State.Busy = false
 	self.State.CurrentTask = "Cancelled"
-
-	if self._activeTween then
-		pcall(function() self._activeTween:Cancel() end)
-	end
-	if self._conn then
-		self._conn:Disconnect()
-	end
-
+	if self._activeTween then pcall(function() self._activeTween:Cancel() end) end
 	self._activeTween = nil
-	self._conn = nil
 end
 
 function PrestineManager:Enqueue(target)
@@ -114,60 +116,125 @@ function PrestineManager:ClearQueue()
 	self._queue = {}
 end
 
---========================
--- Movement
---========================
 function PrestineManager:_travel(cf, token)
 	local hum, hrp = getHumanoidRoot()
 	local method = self.Config.TravelMethod
+	if not isValidMethod(method) then
+		method = "Teleport"
+		self.Config.TravelMethod = method
+	end
 
 	if method == "Teleport" then
 		hrp.CFrame = cf
-		task.wait(self.Config.TeleportDelay)
+		local d = tonumber(self.Config.TeleportDelay) or 0
+		if d > 0 then task.wait(d) end
+		return
+	end
 
-	elseif method == "Tween" then
+	if method == "Tween" then
 		local dist = (hrp.Position - cf.Position).Magnitude
-		local dur = dist / math.max(self.Config.TweenSpeed, 1)
-
+		local speed = math.max(tonumber(self.Config.TweenSpeed) or 1, 1)
+		local dur = dist / speed
 		local tween = TweenService:Create(
 			hrp,
 			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ CFrame = cf }
 		)
-
 		self._activeTween = tween
-		tween:Play()
 
-		-- Token-aware wait
 		local completed = false
-		local c
-		c = tween.Completed:Connect(function()
+		local conn
+		conn = tween.Completed:Connect(function()
 			completed = true
-			if c then c:Disconnect() end
+			if conn then conn:Disconnect() end
 		end)
+
+		local lastPos = hrp.Position
+		local lastMoveT = os.clock()
+		tween:Play()
 
 		while not completed do
 			if token ~= self._token then
 				pcall(function() tween:Cancel() end)
 				break
 			end
-			task.wait()
+
+			local p = hrp.Position
+			if (p - lastPos).Magnitude > 0.15 then
+				lastPos = p
+				lastMoveT = os.clock()
+			elseif os.clock() - lastMoveT > 1.0 then
+				pcall(function() tween:Cancel() end)
+				break
+			end
+
+			task.wait(0.1)
 		end
 
-	elseif method == "Walking" then
+		self._activeTween = nil
+		return
+	end
+
+	if method == "Walking" then
 		local path = PathfindingService:CreatePath()
 		path:ComputeAsync(hrp.Position, cf.Position)
+		if path.Status ~= Enum.PathStatus.Success then return end
 
-		if path.Status == Enum.PathStatus.Success then
-			for _, wp in ipairs(path:GetWaypoints()) do
-				if token ~= self._token then return end
+		for _, wp in ipairs(path:GetWaypoints()) do
+			if token ~= self._token then return end
 
-				if wp.Action == Enum.PathWaypointAction.Jump then
-					hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			if wp.Action == Enum.PathWaypointAction.Jump then
+				hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+
+			local reached = false
+			local moveConn
+			moveConn = hum.MoveToFinished:Connect(function(ok)
+				reached = ok or true
+				if moveConn then moveConn:Disconnect() end
+			end)
+
+			hum:MoveTo(wp.Position)
+
+			local t0 = os.clock()
+			while not reached do
+				if token ~= self._token then
+					if moveConn then moveConn:Disconnect() end
+					return
 				end
-
-				hum:MoveTo(wp.Position)
-				hum.MoveToFinished:Wait()
+				if os.clock() - t0 > 3.0 then
+					if moveConn then moveConn:Disconnect() end
+					path:ComputeAsync(hrp.Position, cf.Position)
+					if path.Status == Enum.PathStatus.Success then
+						for _, wp2 in ipairs(path:GetWaypoints()) do
+							if token ~= self._token then return end
+							if wp2.Action == Enum.PathWaypointAction.Jump then
+								hum:ChangeState(Enum.HumanoidStateType.Jumping)
+							end
+							local reached2 = false
+							local c2
+							c2 = hum.MoveToFinished:Connect(function()
+								reached2 = true
+								if c2 then c2:Disconnect() end
+							end)
+							hum:MoveTo(wp2.Position)
+							local t1 = os.clock()
+							while not reached2 do
+								if token ~= self._token then
+									if c2 then c2:Disconnect() end
+									return
+								end
+								if os.clock() - t1 > 3.0 then
+									if c2 then c2:Disconnect() end
+									return
+								end
+								task.wait(0.05)
+							end
+						end
+					end
+					return
+				end
+				task.wait(0.05)
 			end
 		end
 	end
@@ -190,8 +257,10 @@ function PrestineManager:StartQueue()
 			end
 		end
 
-		self.State.Busy = false
-		self.State.CurrentTask = "Idle"
+		if token == self._token then
+			self.State.Busy = false
+			self.State.CurrentTask = "Idle"
+		end
 	end)
 end
 
@@ -209,26 +278,71 @@ function PrestineManager:TravelMultiple(list)
 	self:StartQueue()
 end
 
---========================
--- UI (Home + Settings only)
---========================
+function PrestineManager:_trySetParagraphContent(paragraphObj, text)
+	if not paragraphObj then return false end
+	local candidates = { "SetContent", "SetText", "Update", "Set", "SetValue" }
+	for _, m in ipairs(candidates) do
+		local f = paragraphObj[m]
+		if typeof(f) == "function" then
+			local ok = pcall(function()
+				f(paragraphObj, text)
+			end)
+			if ok then return true end
+		end
+	end
+	return false
+end
+
+function PrestineManager:_notify(lib, title, content, dur)
+	if not lib then return end
+	pcall(function()
+		lib:AddNotification({
+			TitleText = title,
+			ContentText = content,
+			Duration = dur or 2
+		})
+	end)
+end
+
+function PrestineManager:_bindCharacterSafety()
+	if self._charConn then self._charConn:Disconnect() end
+	self._charConn = player.CharacterAdded:Connect(function()
+		self:Cancel()
+		self.State.CurrentTask = "Respawned"
+	end)
+
+	local hum = nil
+	pcall(function()
+		hum = getCharacter():FindFirstChildOfClass("Humanoid")
+	end)
+
+	if self._deathConn then self._deathConn:Disconnect() end
+	if hum then
+		self._deathConn = hum.Died:Connect(function()
+			self:Cancel()
+			self.State.CurrentTask = "Died"
+		end)
+	end
+end
+
 function PrestineManager:SetUpStarterUI()
 	local PrestineLib = getgenv().PrestineLib
 	if not PrestineLib then return end
 
-	-- HOME
+	self:_bindCharacterSafety()
+
 	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home" })
 
 	PrestineLib:AddButton({
 		Tab = "Home",
 		MainName = "Copy YouTube",
 		Callback = function()
-			setClipboard("YOUR_YOUTUBE_LINK_HERE")
-			PrestineLib:AddNotification({
-				TitleText = "Copied",
-				ContentText = "YouTube link copied to clipboard.",
-				Duration = 2
-			})
+			local ok = setClipboard("YOUR_YOUTUBE_LINK_HERE")
+			if ok then
+				self:_notify(PrestineLib, "Copied", "YouTube link copied to clipboard.", 2)
+			else
+				self:_notify(PrestineLib, "Unsupported", "Clipboard not supported in this environment.", 3)
+			end
 		end
 	})
 
@@ -236,24 +350,41 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Home",
 		MainName = "Copy Discord",
 		Callback = function()
-			setClipboard("YOUR_DISCORD_INVITE_HERE")
-			PrestineLib:AddNotification({
-				TitleText = "Copied",
-				ContentText = "Discord invite copied to clipboard.",
-				Duration = 2
-			})
+			local ok = setClipboard("YOUR_DISCORD_INVITE_HERE")
+			if ok then
+				self:_notify(PrestineLib, "Copied", "Discord invite copied to clipboard.", 2)
+			else
+				self:_notify(PrestineLib, "Unsupported", "Clipboard not supported in this environment.", 3)
+			end
 		end
 	})
 
-	local status = PrestineLib:AddParagraph({
+	self._statusParagraph = PrestineLib:AddParagraph({
 		Tab = "Home",
 		MainTitle = "Character Status",
-		paragraphSize = 120,
+		paragraphSize = 140,
 		MainContent = "Loading..."
 	})
 
-	-- SETTINGS
-	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Settings" })
+	PrestineLib:AddButton({
+		Tab = "Home",
+		MainName = "Clear Queue",
+		Callback = function()
+			self:ClearQueue()
+			self:_notify(PrestineLib, "Queue", "Queue cleared.", 2)
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Home",
+		MainName = "Cancel Movement",
+		Callback = function()
+			self:Cancel()
+			self:_notify(PrestineLib, "Cancelled", "Movement cancelled.", 2)
+		end
+	})
+
+	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement" })
 
 	PrestineLib:AddDropdown({
 		Tab = "Settings",
@@ -262,7 +393,10 @@ function PrestineManager:SetUpStarterUI()
 		Multiple = false,
 		DefaultChoice = { self.Config.TravelMethod },
 		Callback = function(v)
-			self.Config.TravelMethod = typeof(v) == "table" and v[1] or v
+			local m = typeof(v) == "table" and v[1] or v
+			if not isValidMethod(m) then m = "Teleport" end
+			self.Config.TravelMethod = m
+			self:_notify(PrestineLib, "Updated", "Travel Method: " .. m, 2)
 		end
 	})
 
@@ -275,6 +409,7 @@ function PrestineManager:SetUpStarterUI()
 		Increment = 10,
 		Callback = function(v)
 			self.Config.TweenSpeed = v
+			self:_notify(PrestineLib, "Updated", "Tween Speed: " .. tostring(v), 2)
 		end
 	})
 
@@ -283,35 +418,88 @@ function PrestineManager:SetUpStarterUI()
 		MainTitle = "Teleport Delay",
 		PlaceHolder = "Seconds (0 - 10)",
 		Callback = function(v)
-			local n = safeNum(v)
-			if n then
-				self.Config.TeleportDelay = math.clamp(n, 0, 10)
+			local n = clampNumber(v, 0, 10)
+			if n ~= nil then
+				self.Config.TeleportDelay = n
+				self:_notify(PrestineLib, "Updated", "Teleport Delay: " .. tostring(n), 2)
+			else
+				self:_notify(PrestineLib, "Invalid", "Enter a number between 0 and 10.", 2)
 			end
 		end
 	})
 
-	-- Live status updater
-	if self._uiConn then
-		self._uiConn:Disconnect()
-	end
+	PrestineLib:AddToggle({
+		Tab = "Settings",
+		MainName = "Show Debug Status",
+		DefaultState = self.Config.ShowDebugStatus,
+		Callback = function(val)
+			self.Config.ShowDebugStatus = val and true or false
+			self:_notify(PrestineLib, "Updated", "Debug Status: " .. tostring(self.Config.ShowDebugStatus), 2)
+		end
+	})
 
-	self._uiConn = RunService.Heartbeat:Connect(function()
-		local hum, _ = getHumanoidRoot()
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Apply Default Profile",
+		Callback = function()
+			self:ApplyProfile("Default")
+			self:_notify(PrestineLib, "Profile", "Applied Default profile.", 2)
+		end
+	})
+
+	if self._uiConn then self._uiConn:Disconnect() end
+
+	local acc = 0
+	self._uiConn = RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < 0.5 then return end
+		acc = 0
+
+		if not self.Config.ShowDebugStatus then
+			return
+		end
+
+		local hum = nil
+		pcall(function()
+			hum = getCharacter():FindFirstChildOfClass("Humanoid")
+		end)
+		if not hum then return end
 
 		local ws = hum.WalkSpeed
 		local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
 		local hp = hum.Health
 		local mhp = hum.MaxHealth
 
-		-- Only update if the paragraph object supports SetContent (prevents hard error)
-		if status and status.SetContent then
-			status:SetContent(
-				"Task: " .. tostring(self.State.CurrentTask) ..
-				"\nQueue: " .. tostring(#self._queue) ..
-				"\nWalkSpeed: " .. tostring(ws) ..
-				"\nJump: " .. tostring(jp) ..
-				"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
-			)
+		local text =
+			"Task: " .. tostring(self.State.CurrentTask) ..
+			"\nQueue: " .. tostring(#self._queue) ..
+			"\nMethod: " .. tostring(self.Config.TravelMethod) ..
+			"\nTweenSpeed: " .. tostring(self.Config.TweenSpeed) ..
+			"\nTeleportDelay: " .. tostring(self.Config.TeleportDelay) ..
+			"\nWalkSpeed: " .. tostring(ws) ..
+			"\nJump: " .. tostring(jp) ..
+			"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
+
+		if text == self._lastStatusText then return end
+		self._lastStatusText = text
+
+		if self._statusSupportsUpdate == false then
+			if not self._lastStatusWarned then
+				self._lastStatusWarned = true
+				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
+			end
+			return
+		end
+
+		local ok = self:_trySetParagraphContent(self._statusParagraph, text)
+		if ok then
+			self._statusSupportsUpdate = true
+		else
+			self._statusSupportsUpdate = false
+			if not self._lastStatusWarned then
+				self._lastStatusWarned = true
+				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
+			end
 		end
 	end)
 end
