@@ -10,16 +10,14 @@ local player = Players.LocalPlayer
 PrestineManager.Config = {
 	TravelMethod = "Teleport",
 	TweenSpeed = 150,
-	TeleportDelay = 0,
-	ShowDebugStatus = true
+	TeleportDelay = 0
 }
 
 PrestineManager.Profiles = {
 	Default = {
 		TravelMethod = "Teleport",
 		TweenSpeed = 150,
-		TeleportDelay = 0,
-		ShowDebugStatus = true
+		TeleportDelay = 0
 	}
 }
 
@@ -135,6 +133,7 @@ function PrestineManager:_travel(cf, token)
 		local dist = (hrp.Position - cf.Position).Magnitude
 		local speed = math.max(tonumber(self.Config.TweenSpeed) or 1, 1)
 		local dur = dist / speed
+
 		local tween = TweenService:Create(
 			hrp,
 			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -168,7 +167,7 @@ function PrestineManager:_travel(cf, token)
 				break
 			end
 
-			task.wait(0.1)
+			task.wait(0.05)
 		end
 
 		self._activeTween = nil
@@ -428,16 +427,6 @@ function PrestineManager:SetUpStarterUI()
 		end
 	})
 
-	PrestineLib:AddToggle({
-		Tab = "Settings",
-		MainName = "Show Debug Status",
-		DefaultState = self.Config.ShowDebugStatus,
-		Callback = function(val)
-			self.Config.ShowDebugStatus = val and true or false
-			self:_notify(PrestineLib, "Updated", "Debug Status: " .. tostring(self.Config.ShowDebugStatus), 2)
-		end
-	})
-
 	PrestineLib:AddButton({
 		Tab = "Settings",
 		MainName = "Apply Default Profile",
@@ -449,16 +438,7 @@ function PrestineManager:SetUpStarterUI()
 
 	if self._uiConn then self._uiConn:Disconnect() end
 
-	local acc = 0
-	self._uiConn = RunService.Heartbeat:Connect(function(dt)
-		acc += dt
-		if acc < 0.5 then return end
-		acc = 0
-
-		if not self.Config.ShowDebugStatus then
-			return
-		end
-
+	self._uiConn = RunService.Heartbeat:Connect(function()
 		local hum = nil
 		pcall(function()
 			hum = getCharacter():FindFirstChildOfClass("Humanoid")
