@@ -47,6 +47,7 @@ PrestineManager._fps = 0
 PrestineManager._fpsFrames = 0
 PrestineManager._fpsLast = os.clock()
 
+PrestineManager._originalCameraSubject = Camera.CameraSubject
 PrestineManager._serverJoinMode = "Lowest"
 PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
@@ -143,7 +144,11 @@ function PrestineManager:_travel(cf, token)
 	if method == "Teleport" then
 		hrp.CFrame = cf
 		local d = tonumber(self.Config.TeleportDelay) or 0
-		if d > 0 then task.wait(d) end
+		local t0 = os.clock()
+		while os.clock() - t0 < d do
+			if token ~= self._token then return end
+			task.wait()
+		end
 		return
 	end
 
@@ -180,7 +185,7 @@ function PrestineManager:_travel(cf, token)
 			if (p - lastPos).Magnitude > 0.15 then
 				lastPos = p
 				lastMoveT = os.clock()
-			elseif os.clock() - lastMoveT > 1.0 then
+			elseif os.clock() - lastMoveT > 2.5 then
 				pcall(function() tween:Cancel() end)
 				break
 			end
@@ -207,9 +212,10 @@ function PrestineManager:_travel(cf, token)
 			local reached = false
 			local moveConn
 			moveConn = hum.MoveToFinished:Connect(function(ok)
-				reached = ok or true
+				reached = ok
 				if moveConn then moveConn:Disconnect() end
 			end)
+
 
 			hum:MoveTo(wp.Position)
 
@@ -336,7 +342,8 @@ function PrestineManager:_bindCharacterSafety()
 		self.State.CurrentTask = "Respawned"
 	end)
 
-	player.CharacterAdded:Connect(function()
+	if self._camRespawnConn then self._camRespawnConn:Disconnect() end
+	self._camRespawnConn = player.CharacterAdded:Connect(function()
 		task.wait(1)
 		if PrestineManager._spyEnabled and PrestineManager._spyTarget then
 			setCameraToPlayer(PrestineManager._spyTarget)
@@ -443,7 +450,11 @@ local function getServerForMode(mode)
 			"/servers/Public?sortOrder=Asc&limit=100" ..
 			(cursor ~= "" and "&cursor=" .. cursor or "")
 
-		local res = game:HttpGet(url)
+		local ok, res = pcall(function()
+			return game:HttpGet(url)
+		end)
+		if not ok then return nil end
+
 		local data = HttpService:JSONDecode(res)
 
 		for _, s in ipairs(data.data) do
