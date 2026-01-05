@@ -405,7 +405,9 @@ local function getPerformanceText(self)
 		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
 end
 
-local Camera = workspace.CurrentCamera
+local function getCamera()
+	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
+end
 
 local function setCameraToPlayer(plr)
 	if not plr then return end
@@ -413,7 +415,8 @@ local function setCameraToPlayer(plr)
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		Camera.CameraSubject = hum
+		local cam = getCamera()
+		cam.CameraSubject = hum
 	end
 end
 
@@ -422,7 +425,8 @@ local function resetCamera()
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		Camera.CameraSubject = hum
+		local cam = getCamera()
+		cam.CameraSubject = hum
 	end
 end
 
