@@ -336,7 +336,7 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Home",
 		MainName = "Copy YouTube",
 		Callback = function()
-			local ok = setClipboard("YOUR_YOUTUBE_LINK_HERE")
+			local ok = setClipboard("https://www.youtube.com/@PrestineScripts")
 			if ok then
 				self:_notify(PrestineLib, "Copied", "YouTube link copied to clipboard.", 2)
 			else
@@ -349,7 +349,7 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Home",
 		MainName = "Copy Discord",
 		Callback = function()
-			local ok = setClipboard("YOUR_DISCORD_INVITE_HERE")
+			local ok = setClipboard("https://discord.com/invite/AEmYSz6g4C")
 			if ok then
 				self:_notify(PrestineLib, "Copied", "Discord invite copied to clipboard.", 2)
 			else
@@ -408,7 +408,6 @@ function PrestineManager:SetUpStarterUI()
 		Increment = 10,
 		Callback = function(v)
 			self.Config.TweenSpeed = v
-			self:_notify(PrestineLib, "Updated", "Tween Speed: " .. tostring(v), 2)
 		end
 	})
 
@@ -420,9 +419,6 @@ function PrestineManager:SetUpStarterUI()
 			local n = clampNumber(v, 0, 10)
 			if n ~= nil then
 				self.Config.TeleportDelay = n
-				self:_notify(PrestineLib, "Updated", "Teleport Delay: " .. tostring(n), 2)
-			else
-				self:_notify(PrestineLib, "Invalid", "Enter a number between 0 and 10.", 2)
 			end
 		end
 	})
