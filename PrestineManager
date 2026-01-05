@@ -590,7 +590,7 @@ function PrestineManager:SetUpStarterUI()
 
 	PrestineLib:AddToggle({
 		Tab = "Player",
-		MainTitle = "Infinite Jump",
+		MainName = "Infinite Jump",
 		DefaultState = false,
 		Callback = function(state)
 			PrestineManager._infJump = state
