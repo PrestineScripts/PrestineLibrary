@@ -1,5 +1,7 @@
 local PrestineManager = {}
 
+print("hey")
+
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local PathfindingService = game:GetService("PathfindingService")
@@ -547,4 +549,5 @@ self._uiConn = RunService.Heartbeat:Connect(function()
 	end
 end)
 
+print("Hey1")
 return PrestineManager
