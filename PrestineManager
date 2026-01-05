@@ -38,6 +38,12 @@ PrestineManager._statusSupportsUpdate = nil
 PrestineManager._lastStatusText = ""
 PrestineManager._lastStatusWarned = false
 
+PrestineManager._lastServerUpdate = 0
+PrestineManager._lastPerfUpdate = 0
+PrestineManager._fps = 0
+PrestineManager._fpsFrames = 0
+PrestineManager._fpsLast = os.clock()
+
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -58,7 +64,14 @@ local function toCFrame(target)
 end
 
 local function isValidMethod(m)
-	return m == "Teleport" or m == "Tween" or m == "Walking"
+	return m == "Teleport"
+		or m == "Tween"
+		or m == "Walking"
+		or m == "Hybrid"
+		or m == "PathTween"
+		or m == "Velocity"
+		or m == "DropTeleport"
+		or m == "MicroWalk"
 end
 
 local function setClipboard(text)
@@ -114,55 +127,106 @@ function PrestineManager:ClearQueue()
 	self._queue = {}
 end
 
+local function teleportTo(hrp, cf)
+	hrp.CFrame = cf
+end
+
+local function dropTeleport(hrp, cf)
+	hrp.CFrame = cf + Vector3.new(0, 150, 0)
+end
+
+local function velocityTravel(hrp, cf)
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+	bv.Velocity = (cf.Position - hrp.Position).Unit * 80
+	bv.Parent = hrp
+	task.wait(0.5)
+	bv:Destroy()
+end
+
+local function microWalk(hum, hrp, cf)
+	while (hrp.Position - cf.Position).Magnitude > 2 do
+		hum:MoveTo(hrp.Position:Lerp(cf.Position, 0.15))
+		task.wait(0.15)
+	end
+end
+
+local function tweenTo(hrp, cf, speed)
+	local dist = (hrp.Position - cf.Position).Magnitude
+	local dur = dist / speed
+
+	local tween = TweenService:Create(
+		hrp,
+		TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = cf }
+	)
+	tween:Play()
+	tween.Completed:Wait()
+end
+
+local function pathTween(hum, hrp, cf, speed)
+	local path = PathfindingService:CreatePath()
+	path:ComputeAsync(hrp.Position, cf.Position)
+	if path.Status ~= Enum.PathStatus.Success then return false end
+
+	for _, wp in ipairs(path:GetWaypoints()) do
+		if wp.Action == Enum.PathWaypointAction.Jump then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+		tweenTo(hrp, CFrame.new(wp.Position), speed)
+	end
+
+	return true
+end
+
 function PrestineManager:_travel(cf, token)
 	local hum, hrp = getHumanoidRoot()
+	if not hum or not hrp then return end
+
 	local method = self.Config.TravelMethod
 	if not isValidMethod(method) then
 		method = "Teleport"
 		self.Config.TravelMethod = method
 	end
 
-	if method == "Teleport" then
-		hrp.CFrame = cf
-		local d = tonumber(self.Config.TeleportDelay) or 0
-		if d > 0 then task.wait(d) end
-		return
+	local function cancelled()
+		return token ~= self._token
 	end
 
-	if method == "Tween" then
+	local function teleport()
+		hrp.CFrame = cf
+	end
+
+	local function dropTeleport()
+		hrp.CFrame = cf + Vector3.new(0, 150, 0)
+	end
+
+	local function tween(speed)
 		local dist = (hrp.Position - cf.Position).Magnitude
-		local speed = math.max(tonumber(self.Config.TweenSpeed) or 1, 1)
-		local dur = dist / speed
+		local dur = dist / math.max(speed, 1)
 
 		local tween = TweenService:Create(
 			hrp,
 			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ CFrame = cf }
 		)
+
 		self._activeTween = tween
-
-		local completed = false
-		local conn
-		conn = tween.Completed:Connect(function()
-			completed = true
-			if conn then conn:Disconnect() end
-		end)
-
-		local lastPos = hrp.Position
-		local lastMoveT = os.clock()
 		tween:Play()
 
-		while not completed do
-			if token ~= self._token then
+		local lastPos = hrp.Position
+		local lastMove = os.clock()
+
+		while tween.PlaybackState == Enum.PlaybackState.Playing do
+			if cancelled() then
 				pcall(function() tween:Cancel() end)
 				break
 			end
 
-			local p = hrp.Position
-			if (p - lastPos).Magnitude > 0.15 then
-				lastPos = p
-				lastMoveT = os.clock()
-			elseif os.clock() - lastMoveT > 1.0 then
+			if (hrp.Position - lastPos).Magnitude > 0.15 then
+				lastPos = hrp.Position
+				lastMove = os.clock()
+			elseif os.clock() - lastMove > 1 then
 				pcall(function() tween:Cancel() end)
 				break
 			end
@@ -171,71 +235,104 @@ function PrestineManager:_travel(cf, token)
 		end
 
 		self._activeTween = nil
-		return
 	end
 
-	if method == "Walking" then
+	local function microWalk()
+		while not cancelled() and (hrp.Position - cf.Position).Magnitude > 2 do
+			hum:MoveTo(hrp.Position:Lerp(cf.Position, 0.15))
+			task.wait(0.15)
+		end
+	end
+
+	local function velocityMove()
+		local dir = (cf.Position - hrp.Position)
+		if dir.Magnitude < 1 then return end
+
+		local bv = Instance.new("BodyVelocity")
+		bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+		bv.Velocity = dir.Unit * 80
+		bv.Parent = hrp
+
+		local t0 = os.clock()
+		while not cancelled() and os.clock() - t0 < 0.6 do
+			task.wait()
+		end
+
+		bv:Destroy()
+	end
+
+	local function pathTween()
 		local path = PathfindingService:CreatePath()
 		path:ComputeAsync(hrp.Position, cf.Position)
-		if path.Status ~= Enum.PathStatus.Success then return end
+		if path.Status ~= Enum.PathStatus.Success then
+			return false
+		end
 
 		for _, wp in ipairs(path:GetWaypoints()) do
-			if token ~= self._token then return end
+			if cancelled() then return true end
 
 			if wp.Action == Enum.PathWaypointAction.Jump then
 				hum:ChangeState(Enum.HumanoidStateType.Jumping)
 			end
 
-			local reached = false
-			local moveConn
-			moveConn = hum.MoveToFinished:Connect(function(ok)
-				reached = ok or true
-				if moveConn then moveConn:Disconnect() end
-			end)
-
-			hum:MoveTo(wp.Position)
-
-			local t0 = os.clock()
-			while not reached do
-				if token ~= self._token then
-					if moveConn then moveConn:Disconnect() end
-					return
-				end
-				if os.clock() - t0 > 3.0 then
-					if moveConn then moveConn:Disconnect() end
-					path:ComputeAsync(hrp.Position, cf.Position)
-					if path.Status == Enum.PathStatus.Success then
-						for _, wp2 in ipairs(path:GetWaypoints()) do
-							if token ~= self._token then return end
-							if wp2.Action == Enum.PathWaypointAction.Jump then
-								hum:ChangeState(Enum.HumanoidStateType.Jumping)
-							end
-							local reached2 = false
-							local c2
-							c2 = hum.MoveToFinished:Connect(function()
-								reached2 = true
-								if c2 then c2:Disconnect() end
-							end)
-							hum:MoveTo(wp2.Position)
-							local t1 = os.clock()
-							while not reached2 do
-								if token ~= self._token then
-									if c2 then c2:Disconnect() end
-									return
-								end
-								if os.clock() - t1 > 3.0 then
-									if c2 then c2:Disconnect() end
-									return
-								end
-								task.wait(0.05)
-							end
-						end
-					end
-					return
-				end
-				task.wait(0.05)
-			end
+			tween(self.Config.TweenSpeed)
 		end
+
+		return true
+	end
+
+	local dist = (hrp.Position - cf.Position).Magnitude
+
+	-- =========================
+	-- METHOD DISPATCH
+	-- =========================
+
+	if method == "Teleport" then
+		teleport()
+		task.wait(self.Config.TeleportDelay or 0)
+		return
+	end
+
+	if method == "DropTeleport" then
+		dropTeleport()
+		return
+	end
+
+	if method == "Tween" then
+		tween(self.Config.TweenSpeed)
+		return
+	end
+
+	if method == "Hybrid" then
+		if dist > 250 then
+			teleport()
+		else
+			tween(self.Config.TweenSpeed)
+		end
+		return
+	end
+
+	if method == "PathTween" then
+		if not pathTween() then
+			teleport()
+		end
+		return
+	end
+
+	if method == "Velocity" then
+		velocityMove()
+		return
+	end
+
+	if method == "MicroWalk" then
+		microWalk()
+		return
+	end
+
+	if method == "Walking" then
+		hum:MoveTo(cf.Position)
+		hum.MoveToFinished:Wait(3)
+		return
 	end
 end
 
@@ -323,18 +420,37 @@ function PrestineManager:_bindCharacterSafety()
 		end)
 	end
 end
+
+local MarketplaceService = game:GetService("MarketplaceService")
+
 local function getServerInfoText()
-	local gameName = game.Name
-	local gameId = game.GameId
-	local jobId = game.JobId
-	local playerCount = #Players:GetPlayers()
-	local maxPlayers = Players.MaxPlayers
+	local serverType =
+		game.PrivateServerId ~= "" and
+		(game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved") or
+		"Public"
 
 	return
-		"Game Name: " .. tostring(gameName) ..
-		"\nGame ID: " .. tostring(gameId) ..
-		"\nServer ID: " .. (jobId ~= "" and jobId or "Private Server") ..
-		"\nPlayers: " .. tostring(playerCount) .. "/" .. tostring(maxPlayers)
+		"Game Name: " .. game.Name ..
+		"\nPlace ID: " .. game.PlaceId ..
+		"\nGame ID: " .. game.GameId ..
+		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
+		"\nServer Type: " .. serverType ..
+		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
+		"\nUptime: " .. math.floor(workspace:GetServerTimeNow()) .. "s" ..
+		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
+		"\nGravity: " .. tostring(workspace.Gravity)
+end
+
+local function getPerformanceText(self)
+	return
+		"FPS: " .. tostring(self._fps) ..
+		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
+end
+
+local function getExtraCharacterInfo(hum, hrp)
+	return
+		"State: " .. hum:GetState().Name ..
+		"\nRoot Anchored: " .. tostring(hrp.Anchored)
 end
 
 function PrestineManager:SetUpStarterUI()
@@ -380,8 +496,15 @@ function PrestineManager:SetUpStarterUI()
 
 	self._serverStatusParagraph = PrestineLib:AddParagraph({
 		Tab = "Home",
-		MainTitle = "Character Status",
-		paragraphSize = 140,
+		MainTitle = "Server Info",
+		paragraphSize = 160,
+		MainContent = "Loading..."
+	})
+	
+	self._perfParagraph = PrestineLib:AddParagraph({
+		Tab = "Home",
+		MainTitle = "Performance",
+		paragraphSize = 90,
 		MainContent = "Loading..."
 	})
 
@@ -408,7 +531,16 @@ function PrestineManager:SetUpStarterUI()
 	PrestineLib:AddDropdown({
 		Tab = "Settings",
 		MainTitle = "Travel Method",
-		ChoiceList = { "Teleport", "Tween", "Walking" },
+		ChoiceList = {
+	"Teleport",
+	"Tween",
+	"Walking",
+	"Hybrid",
+	"PathTween",
+	"Velocity",
+	"DropTeleport",
+	"MicroWalk"
+},
 		Multiple = false,
 		DefaultChoice = { self.Config.TravelMethod },
 		Callback = function(v)
@@ -451,55 +583,77 @@ function PrestineManager:SetUpStarterUI()
 
 	if self._uiConn then self._uiConn:Disconnect() end
 
-	self._uiConn = RunService.Heartbeat:Connect(function()
-		local hum = nil
-		pcall(function()
-			hum = getCharacter():FindFirstChildOfClass("Humanoid")
-		end)
-		if not hum then return end
+self._uiConn = RunService.Heartbeat:Connect(function()
+	local char = player.Character
+	if not char then return end
 
-		local ws = hum.WalkSpeed
-		local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
-		local hp = hum.Health
-		local mhp = hum.MaxHealth
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hum then return end
 
-		local text =
-			"Task: " .. tostring(self.State.CurrentTask) ..
-			"\nQueue: " .. tostring(#self._queue) ..
-			"\nMethod: " .. tostring(self.Config.TravelMethod) ..
-			"\nTweenSpeed: " .. tostring(self.Config.TweenSpeed) ..
-			"\nTeleportDelay: " .. tostring(self.Config.TeleportDelay) ..
-			"\nWalkSpeed: " .. tostring(ws) ..
-			"\nJump: " .. tostring(jp) ..
-			"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
+	local ws = hum.WalkSpeed
+	local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
+	local hp = hum.Health
+	local mhp = hum.MaxHealth
 
-		if text == self._lastStatusText then return end
-		self._lastStatusText = text
+	local statusText =
+		"Task: " .. tostring(self.State.CurrentTask) ..
+		"\nQueue: " .. #self._queue ..
+		"\nMethod: " .. self.Config.TravelMethod ..
+		"\nTweenSpeed: " .. self.Config.TweenSpeed ..
+		"\nTeleportDelay: " .. self.Config.TeleportDelay ..
+		"\nWalkSpeed: " .. ws ..
+		"\nJump: " .. jp ..
+		"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
 
-		if self._statusSupportsUpdate == false then
-			if not self._lastStatusWarned then
-				self._lastStatusWarned = true
-				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
-			end
-			return
+	if hrp then
+		statusText ..=
+			"\nState: " .. hum:GetState().Name ..
+			"\nRoot Anchored: " .. tostring(hrp.Anchored)
+	end
+
+	if statusText ~= self._lastStatusText then
+		self._lastStatusText = statusText
+		local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
+		if not ok and not self._lastStatusWarned then
+			self._lastStatusWarned = true
+			self:_notify(
+				PrestineLib,
+				"Notice",
+				"Status paragraph cannot be updated by this PrestineLib build.",
+				4
+			)
 		end
+	end
 
+	if os.clock() - self._lastServerUpdate >= 1 then
+		self._lastServerUpdate = os.clock()
 		if self._serverStatusParagraph then
-			local serverText = getServerInfoText()
-			self:_trySetParagraphContent(self._serverStatusParagraph, serverText)
+			self:_trySetParagraphContent(
+				self._serverStatusParagraph,
+				getServerInfoText()
+			)
 		end
+	end
 
-		local ok = self:_trySetParagraphContent(self._statusParagraph, text)
-		if ok then
-			self._statusSupportsUpdate = true
-		else
-			self._statusSupportsUpdate = false
-			if not self._lastStatusWarned then
-				self._lastStatusWarned = true
-				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
-			end
+	if os.clock() - self._lastPerfUpdate >= 0.5 then
+		self._lastPerfUpdate = os.clock()
+		if self._perfParagraph then
+			self:_trySetParagraphContent(
+				self._perfParagraph,
+				getPerformanceText(self)
+			)
 		end
-	end)
-end
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	PrestineManager._fpsFrames += 1
+	if os.clock() - PrestineManager._fpsLast >= 1 then
+		PrestineManager._fps = PrestineManager._fpsFrames
+		PrestineManager._fpsFrames = 0
+		PrestineManager._fpsLast = os.clock()
+	end
+end)
 
 return PrestineManager
