@@ -64,14 +64,7 @@ local function toCFrame(target)
 end
 
 local function isValidMethod(m)
-	return m == "Teleport"
-		or m == "Tween"
-		or m == "Walking"
-		or m == "Hybrid"
-		or m == "PathTween"
-		or m == "Velocity"
-		or m == "DropTeleport"
-		or m == "MicroWalk"
+	return m == "Teleport" or m == "Tween" or m == "Walking"
 end
 
 local function setClipboard(text)
@@ -127,106 +120,55 @@ function PrestineManager:ClearQueue()
 	self._queue = {}
 end
 
-local function teleportTo(hrp, cf)
-	hrp.CFrame = cf
-end
-
-local function dropTeleport(hrp, cf)
-	hrp.CFrame = cf + Vector3.new(0, 150, 0)
-end
-
-local function velocityTravel(hrp, cf)
-	local bv = Instance.new("BodyVelocity")
-	bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-	bv.Velocity = (cf.Position - hrp.Position).Unit * 80
-	bv.Parent = hrp
-	task.wait(0.5)
-	bv:Destroy()
-end
-
-local function microWalk(hum, hrp, cf)
-	while (hrp.Position - cf.Position).Magnitude > 2 do
-		hum:MoveTo(hrp.Position:Lerp(cf.Position, 0.15))
-		task.wait(0.15)
-	end
-end
-
-local function tweenTo(hrp, cf, speed)
-	local dist = (hrp.Position - cf.Position).Magnitude
-	local dur = dist / speed
-
-	local tween = TweenService:Create(
-		hrp,
-		TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ CFrame = cf }
-	)
-	tween:Play()
-	tween.Completed:Wait()
-end
-
-local function pathTween(hum, hrp, cf, speed)
-	local path = PathfindingService:CreatePath()
-	path:ComputeAsync(hrp.Position, cf.Position)
-	if path.Status ~= Enum.PathStatus.Success then return false end
-
-	for _, wp in ipairs(path:GetWaypoints()) do
-		if wp.Action == Enum.PathWaypointAction.Jump then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-		end
-		tweenTo(hrp, CFrame.new(wp.Position), speed)
-	end
-
-	return true
-end
-
 function PrestineManager:_travel(cf, token)
 	local hum, hrp = getHumanoidRoot()
-	if not hum or not hrp then return end
-
 	local method = self.Config.TravelMethod
 	if not isValidMethod(method) then
 		method = "Teleport"
 		self.Config.TravelMethod = method
 	end
 
-	local function cancelled()
-		return token ~= self._token
-	end
-
-	local function teleport()
+	if method == "Teleport" then
 		hrp.CFrame = cf
+		local d = tonumber(self.Config.TeleportDelay) or 0
+		if d > 0 then task.wait(d) end
+		return
 	end
 
-	local function dropTeleport()
-		hrp.CFrame = cf + Vector3.new(0, 150, 0)
-	end
-
-	local function tween(speed)
+	if method == "Tween" then
 		local dist = (hrp.Position - cf.Position).Magnitude
-		local dur = dist / math.max(speed, 1)
+		local speed = math.max(tonumber(self.Config.TweenSpeed) or 1, 1)
+		local dur = dist / speed
 
 		local tween = TweenService:Create(
 			hrp,
 			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ CFrame = cf }
 		)
-
 		self._activeTween = tween
-		tween:Play()
+
+		local completed = false
+		local conn
+		conn = tween.Completed:Connect(function()
+			completed = true
+			if conn then conn:Disconnect() end
+		end)
 
 		local lastPos = hrp.Position
-		local lastMove = os.clock()
+		local lastMoveT = os.clock()
+		tween:Play()
 
-		while tween.PlaybackState == Enum.PlaybackState.Playing do
-			if cancelled() then
+		while not completed do
+			if token ~= self._token then
 				pcall(function() tween:Cancel() end)
 				break
 			end
 
-			if (hrp.Position - lastPos).Magnitude > 0.15 then
-				lastPos = hrp.Position
-				lastMove = os.clock()
-			elseif os.clock() - lastMove > 1 then
+			local p = hrp.Position
+			if (p - lastPos).Magnitude > 0.15 then
+				lastPos = p
+				lastMoveT = os.clock()
+			elseif os.clock() - lastMoveT > 1.0 then
 				pcall(function() tween:Cancel() end)
 				break
 			end
@@ -235,104 +177,71 @@ function PrestineManager:_travel(cf, token)
 		end
 
 		self._activeTween = nil
+		return
 	end
 
-	local function microWalk()
-		while not cancelled() and (hrp.Position - cf.Position).Magnitude > 2 do
-			hum:MoveTo(hrp.Position:Lerp(cf.Position, 0.15))
-			task.wait(0.15)
-		end
-	end
-
-	local function velocityMove()
-		local dir = (cf.Position - hrp.Position)
-		if dir.Magnitude < 1 then return end
-
-		local bv = Instance.new("BodyVelocity")
-		bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-		bv.Velocity = dir.Unit * 80
-		bv.Parent = hrp
-
-		local t0 = os.clock()
-		while not cancelled() and os.clock() - t0 < 0.6 do
-			task.wait()
-		end
-
-		bv:Destroy()
-	end
-
-	local function pathTween()
+	if method == "Walking" then
 		local path = PathfindingService:CreatePath()
 		path:ComputeAsync(hrp.Position, cf.Position)
-		if path.Status ~= Enum.PathStatus.Success then
-			return false
-		end
+		if path.Status ~= Enum.PathStatus.Success then return end
 
 		for _, wp in ipairs(path:GetWaypoints()) do
-			if cancelled() then return true end
+			if token ~= self._token then return end
 
 			if wp.Action == Enum.PathWaypointAction.Jump then
 				hum:ChangeState(Enum.HumanoidStateType.Jumping)
 			end
 
-			tween(self.Config.TweenSpeed)
+			local reached = false
+			local moveConn
+			moveConn = hum.MoveToFinished:Connect(function(ok)
+				reached = ok or true
+				if moveConn then moveConn:Disconnect() end
+			end)
+
+			hum:MoveTo(wp.Position)
+
+			local t0 = os.clock()
+			while not reached do
+				if token ~= self._token then
+					if moveConn then moveConn:Disconnect() end
+					return
+				end
+				if os.clock() - t0 > 3.0 then
+					if moveConn then moveConn:Disconnect() end
+					path:ComputeAsync(hrp.Position, cf.Position)
+					if path.Status == Enum.PathStatus.Success then
+						for _, wp2 in ipairs(path:GetWaypoints()) do
+							if token ~= self._token then return end
+							if wp2.Action == Enum.PathWaypointAction.Jump then
+								hum:ChangeState(Enum.HumanoidStateType.Jumping)
+							end
+							local reached2 = false
+							local c2
+							c2 = hum.MoveToFinished:Connect(function()
+								reached2 = true
+								if c2 then c2:Disconnect() end
+							end)
+							hum:MoveTo(wp2.Position)
+							local t1 = os.clock()
+							while not reached2 do
+								if token ~= self._token then
+									if c2 then c2:Disconnect() end
+									return
+								end
+								if os.clock() - t1 > 3.0 then
+									if c2 then c2:Disconnect() end
+									return
+								end
+								task.wait(0.05)
+							end
+						end
+					end
+					return
+				end
+				task.wait(0.05)
+			end
 		end
-
-		return true
-	end
-
-	local dist = (hrp.Position - cf.Position).Magnitude
-
-	-- =========================
-	-- METHOD DISPATCH
-	-- =========================
-
-	if method == "Teleport" then
-		teleport()
-		task.wait(self.Config.TeleportDelay or 0)
-		return
-	end
-
-	if method == "DropTeleport" then
-		dropTeleport()
-		return
-	end
-
-	if method == "Tween" then
-		tween(self.Config.TweenSpeed)
-		return
-	end
-
-	if method == "Hybrid" then
-		if dist > 250 then
-			teleport()
-		else
-			tween(self.Config.TweenSpeed)
-		end
-		return
-	end
-
-	if method == "PathTween" then
-		if not pathTween() then
-			teleport()
-		end
-		return
-	end
-
-	if method == "Velocity" then
-		velocityMove()
-		return
-	end
-
-	if method == "MicroWalk" then
-		microWalk()
-		return
-	end
-
-	if method == "Walking" then
-		hum:MoveTo(cf.Position)
-		hum.MoveToFinished:Wait(3)
-		return
 	end
 end
 
@@ -531,16 +440,7 @@ function PrestineManager:SetUpStarterUI()
 	PrestineLib:AddDropdown({
 		Tab = "Settings",
 		MainTitle = "Travel Method",
-		ChoiceList = {
-	"Teleport",
-	"Tween",
-	"Walking",
-	"Hybrid",
-	"PathTween",
-	"Velocity",
-	"DropTeleport",
-	"MicroWalk"
-},
+		ChoiceList = { "Teleport", "Tween", "Walking" },
 		Multiple = false,
 		DefaultChoice = { self.Config.TravelMethod },
 		Callback = function(v)
