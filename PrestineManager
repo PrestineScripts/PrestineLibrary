@@ -620,7 +620,7 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function(state)
 			PrestineManager._spyEnabled = state
 	
-			local cam = workspace.CurrentCamera
+			local cam = getCamera()
 			if not cam then return end
 	
 			if state then
