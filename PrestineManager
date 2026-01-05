@@ -47,6 +47,10 @@ PrestineManager._fps = 0
 PrestineManager._fpsFrames = 0
 PrestineManager._fpsLast = os.clock()
 
+PrestineManager._serverJoinMode = "Lowest"
+PrestineManager._spyEnabled = false
+PrestineManager._spyTarget = nil
+
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -54,6 +58,11 @@ end
 local function getHumanoidRoot()
 	local c = getCharacter()
 	return c:WaitForChild("Humanoid"), c:WaitForChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+	local char = player.Character or player.CharacterAdded:Wait()
+	return char:WaitForChild("Humanoid")
 end
 
 local function toCFrame(target)
@@ -327,6 +336,13 @@ function PrestineManager:_bindCharacterSafety()
 		self.State.CurrentTask = "Respawned"
 	end)
 
+	player.CharacterAdded:Connect(function()
+		task.wait(1)
+		if PrestineManager._spyEnabled and PrestineManager._spyTarget then
+			setCameraToPlayer(PrestineManager._spyTarget)
+		end
+	end)
+
 	local hum = nil
 	pcall(function()
 		hum = getCharacter():FindFirstChildOfClass("Humanoid")
@@ -380,6 +396,79 @@ end
 local function getPerformanceText(self)
 	return "FPS: " .. tostring(self._fps) ..
 		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
+end
+
+local Camera = workspace.CurrentCamera
+
+local function setCameraToPlayer(plr)
+	if not plr then return end
+	local char = plr.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		Camera.CameraSubject = hum
+	end
+end
+
+local function resetCamera()
+	local char = player.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		Camera.CameraSubject = hum
+	end
+end
+
+local function getPlayerNames()
+	local list = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			table.insert(list, plr.Name)
+		end
+	end
+	return list
+end
+
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+
+local function getServerForMode(mode)
+	local placeId = game.PlaceId
+	local cursor = ""
+	local bestServer = nil
+
+	for _ = 1, 5 do
+		local url =
+			"https://games.roblox.com/v1/games/" .. placeId ..
+			"/servers/Public?sortOrder=Asc&limit=100" ..
+			(cursor ~= "" and "&cursor=" .. cursor or "")
+
+		local res = game:HttpGet(url)
+		local data = HttpService:JSONDecode(res)
+
+		for _, s in ipairs(data.data) do
+			if s.playing < s.maxPlayers then
+				if mode == "Lowest" then
+					if not bestServer or s.playing < bestServer.playing then
+						bestServer = s
+					end
+				elseif mode == "Max" then
+					if not bestServer or s.playing > bestServer.playing then
+						bestServer = s
+					end
+				elseif mode == "Full" then
+					if s.playing >= s.maxPlayers - 1 then
+						return s
+					end
+				end
+			end
+		end
+
+		if not data.nextPageCursor then break end
+		cursor = data.nextPageCursor
+	end
+
+	return bestServer
 end
 
 function PrestineManager:SetUpStarterUI()
@@ -452,6 +541,111 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function()
 			self:Cancel()
 			self:_notify(PrestineLib, "Cancelled", "Movement cancelled.", 2)
+		end
+	})
+
+	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player" })
+	
+	PrestineLib:AddSlider({
+		Tab = "Player",
+		SliderTitle = "WalkSpeed",
+		Min = 0,
+		Max = 500,
+		DefaultValue = 16,
+		Increment = 10,
+		Callback = function(v)
+			local hum = getHumanoid()
+			hum.WalkSpeed = v
+		end
+	})
+	
+	PrestineLib:AddSlider({
+		Tab = "Player",
+		SliderTitle = "Jump Power",
+		Min = 0,
+		Max = 1000,
+		DefaultValue = 50,
+		Increment = 10,
+		Callback = function(v)
+			local hum = getHumanoid()
+			hum.UseJumpPower = true
+			hum.JumpPower = v
+		end
+	})
+
+	PrestineLib:AddToggle({
+		Tab = "Player",
+		MainTitle = "Infinite Jump",
+		DefaultState = false,
+		Callback = function(state)
+			PrestineManager._infJump = state
+		end
+	})
+
+	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
+
+	PrestineLib:AddDropdown({
+		Tab = "Spy",
+		MainTitle = "Select Player",
+		ChoiceList = getPlayerNames(),
+		Multiple = false,
+		Callback = function(v)
+			local name = typeof(v) == "table" and v[1] or v
+			PrestineManager._spyTarget = Players:FindFirstChild(name)
+			if PrestineManager._spyEnabled and PrestineManager._spyTarget then
+				setCameraToPlayer(PrestineManager._spyTarget)
+			end
+		end
+	})
+
+	PrestineLib:AddToggle({
+		Tab = "Spy",
+		MainTitle = "Enable Spy POV",
+		DefaultState = false,
+		Callback = function(state)
+			PrestineManager._spyEnabled = state
+			if state and PrestineManager._spyTarget then
+				setCameraToPlayer(PrestineManager._spyTarget)
+			else
+				resetCamera()
+			end
+		end
+	})
+	
+	if PrestineManager._infJumpConn then PrestineManager._infJumpConn:Disconnect() end
+	PrestineManager._infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
+		if not PrestineManager._infJump then return end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
+
+	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Server Hop" })
+	
+	PrestineLib:AddDropdown({
+		Tab = "Player",
+		MainTitle = "Join Server Type",
+		ChoiceList = { "Lowest", "Max", "Full" },
+		DefaultChoice = { "Lowest" },
+		Multiple = false,
+		Callback = function(v)
+			PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
+		end
+	})
+	
+	PrestineLib:AddButton({
+		Tab = "Player",
+		MainName = "Join Server",
+		Callback = function()
+			local server = getServerForMode(PrestineManager._serverJoinMode)
+			if server and server.id then
+				TeleportService:TeleportToPlaceInstance(
+					game.PlaceId,
+					server.id,
+					player
+				)
+			end
 		end
 	})
 
