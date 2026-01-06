@@ -720,7 +720,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddKeybind({
-	    Tab = "Home",
+	    Tab = "Settings",
 	    MainTitle = "Toggle UI",
 	    DefaultKey = Enum.KeyCode.RightShift,
 	    Callback = function(key)
