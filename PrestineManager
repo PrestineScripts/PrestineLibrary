@@ -719,6 +719,15 @@ function PrestineManager:SetUpStarterUI()
 		end
 	})
 
+	PrestineLib:AddKeybind({
+	    Tab = "Home",
+	    MainTitle = "Toggle UI",
+	    DefaultKey = Enum.KeyCode.RightShift,
+	    Callback = function(key)
+			PrestineLib.GUIHotkey = key
+	    end
+	})
+
 	PrestineLib:AddSaveToggle({
 		Tab = "Settings",
 		MainName = "Auto Save Config",
