@@ -70,6 +70,9 @@ PrestineManager._serverJoinMode = "Lowest"
 PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
 
+PrestineManager._antiAfk = false
+PrestineManager._antiAfkConn = nil
+
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -461,7 +464,18 @@ end
 local function toggleTextures(state)
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("Decal") or inst:IsA("Texture") then
-			inst.Transparency = state and 1 or 0
+			if state then
+				if inst:GetAttribute("Prestine_T") == nil then
+					inst:SetAttribute("Prestine_T", inst.Transparency)
+				end
+				inst.Transparency = 1
+			else
+				local t = inst:GetAttribute("Prestine_T")
+				if t ~= nil then
+					inst.Transparency = t
+					inst:SetAttribute("Prestine_T", nil)
+				end
+			end
 		end
 	end
 end
@@ -478,40 +492,38 @@ end
 
 local function toggleLighting(state)
 	local Lighting = game:GetService("Lighting")
+	local o = PrestineManager._original.Lighting
 
 	if state then
-		if not PrestineManager._originalLighting._saved then
-			PrestineManager._originalLighting = {
-				_saved = true,
-				Brightness = Lighting.Brightness,
-				GlobalShadows = Lighting.GlobalShadows,
-				Ambient = Lighting.Ambient,
-				OutdoorAmbient = Lighting.OutdoorAmbient
-			}
+		if not o._saved then
+			o._saved = true
+			o.Brightness = Lighting.Brightness
+			o.GlobalShadows = Lighting.GlobalShadows
+			o.Ambient = Lighting.Ambient
+			o.OutdoorAmbient = Lighting.OutdoorAmbient
+			o.Post = {}
+
+			for _, fx in ipairs(Lighting:GetChildren()) do
+				if fx:IsA("PostEffect") then
+					o.Post[fx] = fx.Enabled
+					fx.Enabled = false
+				end
+			end
 		end
 
 		Lighting.Brightness = 1
 		Lighting.GlobalShadows = false
 		Lighting.Ambient = Color3.new(1,1,1)
 		Lighting.OutdoorAmbient = Color3.new(1,1,1)
-
-		for _, fx in ipairs(Lighting:GetChildren()) do
-			if fx:IsA("PostEffect") then
-				fx.Enabled = false
-			end
-		end
 	else
-		local o = PrestineManager._originalLighting
 		if o._saved then
 			Lighting.Brightness = o.Brightness
 			Lighting.GlobalShadows = o.GlobalShadows
 			Lighting.Ambient = o.Ambient
 			Lighting.OutdoorAmbient = o.OutdoorAmbient
-		end
 
-		for _, fx in ipairs(Lighting:GetChildren()) do
-			if fx:IsA("PostEffect") then
-				fx.Enabled = true
+			for fx, enabled in pairs(o.Post or {}) do
+				if fx then fx.Enabled = enabled end
 			end
 		end
 	end
@@ -521,14 +533,18 @@ local function toggleFog(state)
 	local Lighting = game:GetService("Lighting")
 
 	if state then
-		PrestineManager._originalLighting.FogEnd = Lighting.FogEnd
-		PrestineManager._originalLighting.FogStart = Lighting.FogStart
+		if not PrestineManager._original.Lighting._fogSaved then
+			PrestineManager._original.Lighting.FogEnd = Lighting.FogEnd
+			PrestineManager._original.Lighting.FogStart = Lighting.FogStart
+			PrestineManager._original.Lighting._fogSaved = true
+		end
 		Lighting.FogEnd = 1e6
 		Lighting.FogStart = 1e6
 	else
-		if PrestineManager._originalLighting.FogEnd then
-			Lighting.FogEnd = PrestineManager._originalLighting.FogEnd
-			Lighting.FogStart = PrestineManager._originalLighting.FogStart
+		local o = PrestineManager._original.Lighting
+		if o._fogSaved then
+			Lighting.FogEnd = o.FogEnd
+			Lighting.FogStart = o.FogStart
 		end
 	end
 end
@@ -537,7 +553,19 @@ local Lighting = game:GetService("Lighting")
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
 local function toggleShadows(state)
-	Lighting.GlobalShadows = not state
+	local Lighting = game:GetService("Lighting")
+	local o = PrestineManager._original.Lighting
+
+	if state then
+		if o._shadows == nil then
+			o._shadows = Lighting.GlobalShadows
+		end
+		Lighting.GlobalShadows = false
+	else
+		if o._shadows ~= nil then
+			Lighting.GlobalShadows = o._shadows
+		end
+	end
 end
 
 local function toggleRenderDistance(state)
@@ -636,6 +664,10 @@ local function applyLowGraphics(state)
 	toggleWater(state)
 end
 
+local function autoPerfActive()
+	return PrestineManager._perfFlags.AutoPerf
+end
+
 local function autoPerformanceTick(self)
 	if not self._perfFlags.AutoPerf then return end
 
@@ -648,6 +680,19 @@ local function autoPerformanceTick(self)
 		toggleLighting(true)
 	elseif fps > 60 then
 		applyLowGraphics(false)
+	end
+end
+
+local VirtualUser = game:GetService("VirtualUser")
+
+local function getHRP()
+	local char = player.Character
+	return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function copy(text)
+	if setclipboard then
+		pcall(function() setclipboard(text) end)
 	end
 end
 
@@ -816,40 +861,13 @@ function PrestineManager:SetUpStarterUI()
 		end
 	end)
 
-	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Server Hop" })
-	
-	PrestineLib:AddDropdown({
-		Tab = "Player",
-		MainTitle = "Join Server Type",
-		ChoiceList = { "Lowest", "Max", "Full" },
-		DefaultChoice = "Lowest",
-		Multiple = false,
-		Callback = function(v)
-			PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
-		end
-	})
-	
-	PrestineLib:AddButton({
-		Tab = "Player",
-		MainName = "Join Server",
-		Callback = function()
-			local server = getServerForMode(PrestineManager._serverJoinMode)
-			if server and server.id then
-				TeleportService:TeleportToPlaceInstance(
-					game.PlaceId,
-					server.id,
-					player
-				)
-			end
-		end
-	})
-
 	PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance" })
 
 	PrestineLib:AddToggle({
 		Tab = "Performance",
 		MainName = "Turn Off Textures",
 		Callback = function(s)
+			if autoPerfActive() then return end
 			PrestineManager._perfFlags.Textures = s
 			toggleTextures(s)
 		end
@@ -923,6 +941,105 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Auto Performance Mode",
 		Callback = function(s)
 			PrestineManager._perfFlags.AutoPerf = s
+		end
+	})
+
+	PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Utility" })
+
+	PrestineLib:AddToggle({
+		Tab = "Utility",
+		MainName = "Anti AFK",
+		Callback = function(state)
+			PrestineManager._antiAfk = state
+	
+			if PrestineManager._antiAfkConn then
+				PrestineManager._antiAfkConn:Disconnect()
+				PrestineManager._antiAfkConn = nil
+			end
+	
+			if state then
+				PrestineManager._antiAfkConn = player.Idled:Connect(function()
+					VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+					task.wait(1)
+					VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+				end)
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Reset Character",
+		Callback = function()
+			local hum = getHumanoid()
+			if hum then hum.Health = 0 end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Copy Position (CFrame)",
+		Callback = function()
+			local hrp = getHRP()
+			if hrp then
+				copy("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Copy Position (Vector3)",
+		Callback = function()
+			local hrp = getHRP()
+			if hrp then
+				local p = hrp.Position
+				copy(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
+			end
+		end
+	})
+
+	PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
+	
+	PrestineLib:AddDropdown({
+		Tab = "Utility",
+		MainTitle = "Join Server Type",
+		ChoiceList = { "Lowest", "Max", "Full" },
+		DefaultChoice = "Lowest",
+		Multiple = false,
+		Callback = function(v)
+			PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
+		end
+	})
+	
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Join Server",
+		Callback = function()
+			local server = getServerForMode(PrestineManager._serverJoinMode)
+			if server and server.id then
+				TeleportService:TeleportToPlaceInstance(
+					game.PlaceId,
+					server.id,
+					player
+				)
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Rejoin Server",
+		Callback = function()
+			TeleportService:Teleport(game.PlaceId, player)
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Utility",
+		MainName = "Rejoin New Server",
+		Callback = function()
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
 		end
 	})
 
