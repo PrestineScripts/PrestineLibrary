@@ -35,7 +35,6 @@ PrestineManager._perfFlags = {
 	RenderDistance = false,
 	Water = false,
 	LowGraphics = false,
-	AutoPerf = false
 }
 
 PrestineManager._original = {
@@ -684,30 +683,6 @@ local function applyLowGraphics(state)
 	toggleWater(state)
 end
 
-local function autoPerfActive()
-	return PrestineManager._perfFlags.AutoPerf
-end
-
-local function autoPerformanceTick(self)
-	if not self._perfFlags.AutoPerf then return end
-
-	local fps = self._fps
-
-	if fps < 30 and self._autoState ~= "low" then
-		self._autoState = "low"
-		applyLowGraphics(true)
-
-	elseif fps < 45 and self._autoState ~= "mid" then
-		self._autoState = "mid"
-		toggleEffects(true)
-		toggleLighting(true)
-
-	elseif fps > 60 and self._autoState ~= "high" then
-		self._autoState = "high"
-		applyLowGraphics(false)
-	end
-end
-
 local VirtualUser = game:GetService("VirtualUser")
 
 local function getHRP()
@@ -892,7 +867,6 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Performance",
 		MainName = "Turn Off Textures",
 		Callback = function(s)
-			if autoPerfActive() then return end
 			PrestineManager._perfFlags.Textures = s
 			toggleTextures(s)
 		end
@@ -958,14 +932,6 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function(s)
 			PrestineManager._perfFlags.LowGraphics = s
 			applyLowGraphics(s)
-		end
-	})
-	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Auto Performance Mode",
-		Callback = function(s)
-			PrestineManager._perfFlags.AutoPerf = s
 		end
 	})
 
@@ -1204,7 +1170,6 @@ function PrestineManager:SetUpStarterUI()
 			PrestineManager._fps = PrestineManager._fpsFrames
 			PrestineManager._fpsFrames = 0
 			PrestineManager._fpsLast = os.clock()
-			autoPerformanceTick(PrestineManager)
 		end
 	end)
 end
