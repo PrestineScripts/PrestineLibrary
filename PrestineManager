@@ -73,6 +73,28 @@ PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._antiAfkConn = nil
 
+local Cached = {
+	Textures = {},
+	Effects = {}
+}
+
+local function buildCaches()
+	table.clear(Cached.Textures)
+	table.clear(Cached.Effects)
+
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("Decal") or inst:IsA("Texture") then
+			table.insert(Cached.Textures, inst)
+		elseif inst:IsA("ParticleEmitter")
+			or inst:IsA("Trail")
+			or inst:IsA("Beam") then
+			table.insert(Cached.Effects, inst)
+		end
+	end
+end
+
+buildCaches()
+
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -462,8 +484,8 @@ local function getPlayerNames()
 end
 
 local function toggleTextures(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("Decal") or inst:IsA("Texture") then
+	for _, inst in ipairs(Cached.Textures) do
+		if inst and inst.Parent then
 			if state then
 				if inst:GetAttribute("Prestine_T") == nil then
 					inst:SetAttribute("Prestine_T", inst.Transparency)
@@ -481,10 +503,8 @@ local function toggleTextures(state)
 end
 
 local function toggleEffects(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("ParticleEmitter")
-		or inst:IsA("Trail")
-		or inst:IsA("Beam") then
+	for _, inst in ipairs(Cached.Effects) do
+		if inst and inst.Parent then
 			inst.Enabled = not state
 		end
 	end
@@ -673,12 +693,17 @@ local function autoPerformanceTick(self)
 
 	local fps = self._fps
 
-	if fps < 30 then
+	if fps < 30 and self._autoState ~= "low" then
+		self._autoState = "low"
 		applyLowGraphics(true)
-	elseif fps < 45 then
+
+	elseif fps < 45 and self._autoState ~= "mid" then
+		self._autoState = "mid"
 		toggleEffects(true)
 		toggleLighting(true)
-	elseif fps > 60 then
+
+	elseif fps > 60 and self._autoState ~= "high" then
+		self._autoState = "high"
 		applyLowGraphics(false)
 	end
 end
@@ -1098,59 +1123,79 @@ function PrestineManager:SetUpStarterUI()
 		DefaultState = true
 	})
 
-	if self._uiConn then self._uiConn:Disconnect() end
-	self._uiConn = RunService.Heartbeat:Connect(function()
-		local char = player.Character
-		if not char then return end
-
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		local hrp = char:FindFirstChild("HumanoidRootPart")
-		if not hum then return end
-
-		local ws = hum.WalkSpeed
-		local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
-		local hp = hum.Health
-		local mhp = hum.MaxHealth
-
-		local statusText =
-			"Task: " .. tostring(self.State.CurrentTask) ..
-			"\nQueue: " .. #self._queue ..
-			"\nMethod: " .. self.Config.TravelMethod ..
-			"\nTweenSpeed: " .. self.Config.TweenSpeed ..
-			"\nTeleportDelay: " .. self.Config.TeleportDelay ..
-			"\nWalkSpeed: " .. ws ..
-			"\nJump: " .. jp ..
-			"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
-
-		if hrp then
-			statusText ..=
-				"\nState: " .. hum:GetState().Name ..
-				"\nRoot Anchored: " .. tostring(hrp.Anchored)
-		end
-
-		if statusText ~= self._lastStatusText then
-			self._lastStatusText = statusText
-			local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
-			if not ok and not self._lastStatusWarned then
-				self._lastStatusWarned = true
-				self:_notify(PrestineLib, "Notice", "Status paragraph cannot be updated by this PrestineLib build.", 4)
+	if self._uiConn then
+		self._uiConn:Disconnect()
+		self._uiConn = nil
+	end
+	
+	self._uiConn = task.spawn(function()
+		while true do
+			task.wait(0.25)
+	
+			local char = player.Character
+			if not char then continue end
+	
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if not hum then continue end
+	
+			local ws = hum.WalkSpeed
+			local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
+			local hp = hum.Health
+			local mhp = hum.MaxHealth
+	
+			local statusText =
+				"Task: " .. tostring(self.State.CurrentTask) ..
+				"\nQueue: " .. #self._queue ..
+				"\nMethod: " .. self.Config.TravelMethod ..
+				"\nTweenSpeed: " .. self.Config.TweenSpeed ..
+				"\nTeleportDelay: " .. self.Config.TeleportDelay ..
+				"\nWalkSpeed: " .. ws ..
+				"\nJump: " .. jp ..
+				"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
+	
+			if hrp then
+				statusText ..=
+					"\nState: " .. hum:GetState().Name ..
+					"\nRoot Anchored: " .. tostring(hrp.Anchored)
 			end
-		end
-
-		if os.clock() - self._lastServerUpdate >= 1 then
-			self._lastServerUpdate = os.clock()
-			if self._serverStatusParagraph then
-				self:_trySetParagraphContent(self._serverStatusParagraph, getServerInfoText())
+	
+			if statusText ~= self._lastStatusText then
+				self._lastStatusText = statusText
+				local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
+				if not ok and not self._lastStatusWarned then
+					self._lastStatusWarned = true
+					self:_notify(
+						PrestineLib,
+						"Notice",
+						"Status paragraph cannot be updated by this PrestineLib build.",
+						4
+					)
+				end
 			end
-		end
-
-		if os.clock() - self._lastPerfUpdate >= 0.5 then
-			self._lastPerfUpdate = os.clock()
-			if self._perfParagraph then
-				self:_trySetParagraphContent(self._perfParagraph, getPerformanceText(self))
+	
+			if os.clock() - self._lastServerUpdate >= 1 then
+				self._lastServerUpdate = os.clock()
+				if self._serverStatusParagraph then
+					self:_trySetParagraphContent(
+						self._serverStatusParagraph,
+						getServerInfoText()
+					)
+				end
+			end
+	
+			if os.clock() - self._lastPerfUpdate >= 0.5 then
+				self._lastPerfUpdate = os.clock()
+				if self._perfParagraph then
+					self:_trySetParagraphContent(
+						self._perfParagraph,
+						getPerformanceText(self)
+					)
+				end
 			end
 		end
 	end)
+
 
 	if self._fpsConn then self._fpsConn:Disconnect() end
 	self._fpsConn = RunService.RenderStepped:Connect(function()
