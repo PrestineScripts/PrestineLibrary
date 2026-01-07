@@ -26,6 +26,24 @@ PrestineManager.State = {
 	CurrentTask = "Idle"
 }
 
+PrestineManager._perfFlags = {
+	Textures = false,
+	Effects = false,
+	Lighting = false,
+	Fog = false,
+	Shadows = false,
+	RenderDistance = false,
+	Water = false,
+	LowGraphics = false,
+	AutoPerf = false
+}
+
+PrestineManager._original = {
+	Lighting = {},
+	Water = {},
+	Streaming = {}
+}
+
 PrestineManager._token = 0
 PrestineManager._queue = {}
 PrestineManager._activeTween = nil
@@ -440,6 +458,128 @@ local function getPlayerNames()
 	return list
 end
 
+local function toggleTextures(state)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("Decal") or inst:IsA("Texture") then
+			inst.Transparency = state and 1 or 0
+		end
+	end
+end
+
+local function toggleEffects(state)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ParticleEmitter")
+		or inst:IsA("Trail")
+		or inst:IsA("Beam") then
+			inst.Enabled = not state
+		end
+	end
+end
+
+local function toggleLighting(state)
+	local Lighting = game:GetService("Lighting")
+
+	if state then
+		if not PrestineManager._originalLighting._saved then
+			PrestineManager._originalLighting = {
+				_saved = true,
+				Brightness = Lighting.Brightness,
+				GlobalShadows = Lighting.GlobalShadows,
+				Ambient = Lighting.Ambient,
+				OutdoorAmbient = Lighting.OutdoorAmbient
+			}
+		end
+
+		Lighting.Brightness = 1
+		Lighting.GlobalShadows = false
+		Lighting.Ambient = Color3.new(1,1,1)
+		Lighting.OutdoorAmbient = Color3.new(1,1,1)
+
+		for _, fx in ipairs(Lighting:GetChildren()) do
+			if fx:IsA("PostEffect") then
+				fx.Enabled = false
+			end
+		end
+	else
+		local o = PrestineManager._originalLighting
+		if o._saved then
+			Lighting.Brightness = o.Brightness
+			Lighting.GlobalShadows = o.GlobalShadows
+			Lighting.Ambient = o.Ambient
+			Lighting.OutdoorAmbient = o.OutdoorAmbient
+		end
+
+		for _, fx in ipairs(Lighting:GetChildren()) do
+			if fx:IsA("PostEffect") then
+				fx.Enabled = true
+			end
+		end
+	end
+end
+
+local function toggleFog(state)
+	local Lighting = game:GetService("Lighting")
+
+	if state then
+		PrestineManager._originalLighting.FogEnd = Lighting.FogEnd
+		PrestineManager._originalLighting.FogStart = Lighting.FogStart
+		Lighting.FogEnd = 1e6
+		Lighting.FogStart = 1e6
+	else
+		if PrestineManager._originalLighting.FogEnd then
+			Lighting.FogEnd = PrestineManager._originalLighting.FogEnd
+			Lighting.FogStart = PrestineManager._originalLighting.FogStart
+		end
+	end
+end
+
+local Lighting = game:GetService("Lighting")
+local Terrain = workspace:FindFirstChildOfClass("Terrain")
+
+local function toggleShadows(state)
+	Lighting.GlobalShadows = not state
+end
+
+local function toggleRenderDistance(state)
+	if state then
+		PrestineManager._original.Streaming.Target = workspace.StreamingTargetRadius
+		PrestineManager._original.Streaming.Min = workspace.StreamingMinRadius
+		workspace.StreamingTargetRadius = 64
+		workspace.StreamingMinRadius = 64
+	else
+		if PrestineManager._original.Streaming.Target then
+			workspace.StreamingTargetRadius = PrestineManager._original.Streaming.Target
+			workspace.StreamingMinRadius = PrestineManager._original.Streaming.Min
+		end
+	end
+end
+
+local function toggleWater(state)
+	if not Terrain then return end
+
+	if state then
+		PrestineManager._original.Water = {
+			WaveSize = Terrain.WaterWaveSize,
+			WaveSpeed = Terrain.WaterWaveSpeed,
+			Reflectance = Terrain.WaterReflectance,
+			Transparency = Terrain.WaterTransparency
+		}
+
+		Terrain.WaterWaveSize = 0
+		Terrain.WaterWaveSpeed = 0
+		Terrain.WaterReflectance = 0
+		Terrain.WaterTransparency = 1
+	else
+		local o = PrestineManager._original.Water
+		if o then
+			Terrain.WaterWaveSize = o.WaveSize or Terrain.WaterWaveSize
+			Terrain.WaterWaveSpeed = o.WaveSpeed or Terrain.WaterWaveSpeed
+			Terrain.WaterReflectance = o.Reflectance or Terrain.WaterReflectance
+			Terrain.WaterTransparency = o.Transparency or Terrain.WaterTransparency
+		end
+	end
+end
+
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 
@@ -484,6 +624,31 @@ local function getServerForMode(mode)
 	end
 
 	return bestServer
+end
+
+local function applyLowGraphics(state)
+	toggleTextures(state)
+	toggleEffects(state)
+	toggleLighting(state)
+	toggleFog(state)
+	toggleShadows(state)
+	toggleRenderDistance(state)
+	toggleWater(state)
+end
+
+local function autoPerformanceTick(self)
+	if not self._perfFlags.AutoPerf then return end
+
+	local fps = self._fps
+
+	if fps < 30 then
+		applyLowGraphics(true)
+	elseif fps < 45 then
+		toggleEffects(true)
+		toggleLighting(true)
+	elseif fps > 60 then
+		applyLowGraphics(false)
+	end
 end
 
 function PrestineManager:SetUpStarterUI()
@@ -679,6 +844,88 @@ function PrestineManager:SetUpStarterUI()
 		end
 	})
 
+	PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance" })
+
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Turn Off Textures",
+		Callback = function(s)
+			PrestineManager._perfFlags.Textures = s
+			toggleTextures(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Turn Off Effects",
+		Callback = function(s)
+			PrestineManager._perfFlags.Effects = s
+			toggleEffects(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Turn Off Lighting",
+		Callback = function(s)
+			PrestineManager._perfFlags.Lighting = s
+			toggleLighting(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Turn Off Fog",
+		Callback = function(s)
+			PrestineManager._perfFlags.Fog = s
+			toggleFog(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Disable Shadows",
+		Callback = function(s)
+			PrestineManager._perfFlags.Shadows = s
+			toggleShadows(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Reduce Render Distance",
+		Callback = function(s)
+			PrestineManager._perfFlags.RenderDistance = s
+			toggleRenderDistance(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Disable Water Effects",
+		Callback = function(s)
+			PrestineManager._perfFlags.Water = s
+			toggleWater(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Low Graphics Preset",
+		Callback = function(s)
+			PrestineManager._perfFlags.LowGraphics = s
+			applyLowGraphics(s)
+		end
+	})
+	
+	PrestineLib:AddToggle({
+		Tab = "Performance",
+		MainName = "Auto Performance Mode",
+		Callback = function(s)
+			PrestineManager._perfFlags.AutoPerf = s
+		end
+	})
+
 	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement" })
 
 	PrestineLib:AddDropdown({
@@ -795,6 +1042,7 @@ function PrestineManager:SetUpStarterUI()
 			PrestineManager._fps = PrestineManager._fpsFrames
 			PrestineManager._fpsFrames = 0
 			PrestineManager._fpsLast = os.clock()
+			autoPerformanceTick(PrestineManager)
 		end
 	end)
 end
