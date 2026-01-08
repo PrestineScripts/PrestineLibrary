@@ -72,39 +72,6 @@ PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._antiAfkConn = nil
 
-local Cached = {
-	Textures = {},
-	Effects = {}
-}
-
-local function buildCaches()
-	table.clear(Cached.Textures)
-	table.clear(Cached.Effects)
-
-	local count = 0
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("Decal") or inst:IsA("Texture") then
-			table.insert(Cached.Textures, inst)
-		elseif inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") then
-			table.insert(Cached.Effects, inst)
-		end
-
-		count += 1
-		if count % 200 == 0 then
-			task.wait()
-		end
-	end
-end
-
-buildCaches()
-
-task.spawn(function()
-	while true do
-		task.wait(15)
-		buildCaches()
-	end
-end)
-
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
 end
@@ -494,8 +461,8 @@ local function getPlayerNames()
 end
 
 local function toggleTextures(state)
-	for _, inst in ipairs(Cached.Textures) do
-		if inst and inst.Parent then
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("Decal") or inst:IsA("Texture") then
 			if state then
 				if inst:GetAttribute("Prestine_T") == nil then
 					inst:SetAttribute("Prestine_T", inst.Transparency)
@@ -513,8 +480,10 @@ local function toggleTextures(state)
 end
 
 local function toggleEffects(state)
-	for _, inst in ipairs(Cached.Effects) do
-		if inst and inst.Parent then
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ParticleEmitter")
+		or inst:IsA("Trail")
+		or inst:IsA("Beam") then
 			inst.Enabled = not state
 		end
 	end
