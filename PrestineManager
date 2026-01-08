@@ -344,17 +344,6 @@ function PrestineManager:_trySetParagraphContent(paragraphObj, text)
 	return false
 end
 
-function PrestineManager:_notify(lib, title, content, dur)
-	if not lib then return end
-	pcall(function()
-		lib:AddNotification({
-			TitleText = title,
-			ContentText = content,
-			Duration = dur or 2
-		})
-	end)
-end
-
 function PrestineManager:_bindCharacterSafety()
 	if self._charConn then self._charConn:Disconnect() end
 	self._charConn = player.CharacterAdded:Connect(function()
@@ -683,6 +672,12 @@ end
 function PrestineManager:SetUpStarterUI()
 	local PrestineLib = getgenv().PrestineLib
 	if not PrestineLib then return end
+
+	PrestineLib:AddNotification({
+	    TitleText = "Prestine Loaded",
+	    ContentText = "The script has been successfully initialized.",
+	    Duration = 5
+	})
 
 	self:_bindCharacterSafety()
 
