@@ -1049,7 +1049,6 @@ function PrestineManager:SetUpStarterUI()
 			local m = typeof(v) == "table" and v[1] or v
 			if not isValidMethod(m) then m = "Teleport" end
 			self.Config.TravelMethod = m
-			self:_notify(PrestineLib, "Updated", "Travel Method: " .. m, 2)
 		end
 	})
 
@@ -1134,12 +1133,6 @@ function PrestineManager:SetUpStarterUI()
 				local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
 				if not ok and not self._lastStatusWarned then
 					self._lastStatusWarned = true
-					self:_notify(
-						PrestineLib,
-						"Notice",
-						"Status paragraph cannot be updated by this PrestineLib build.",
-						4
-					)
 				end
 			end
 	
