@@ -689,9 +689,17 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function()
 			local ok = setClipboard("https://www.youtube.com/@PrestineScripts")
 			if ok then
-				self:_notify(PrestineLib, "Copied", "YouTube link copied to clipboard.", 2)
+				PrestineLib:AddNotification({
+				    TitleText = "Link Copied!",
+				    ContentText = "YouTube link copied to clipboard.",
+				    Duration = 3
+				})
 			else
-				self:_notify(PrestineLib, "Unsupported", "Clipboard not supported in this environment.", 3)
+				PrestineLib:AddNotification({
+				    TitleText = "Copy Failed!",
+				    ContentText = "Unsupported Function [setclipboard()]",
+				    Duration = 3
+				})
 			end
 		end
 	})
@@ -702,9 +710,17 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function()
 			local ok = setClipboard("https://discord.com/invite/AEmYSz6g4C")
 			if ok then
-				self:_notify(PrestineLib, "Copied", "Discord invite copied to clipboard.", 2)
+				PrestineLib:AddNotification({
+				    TitleText = "Link Copied!",
+				    ContentText = "Discord link copied to clipboard.",
+				    Duration = 3
+				})
 			else
-				self:_notify(PrestineLib, "Unsupported", "Clipboard not supported in this environment.", 3)
+				PrestineLib:AddNotification({
+				    TitleText = "Copy Failed!",
+				    ContentText = "Unsupported Function [setclipboard()]",
+				    Duration = 3
+				})
 			end
 		end
 	})
@@ -735,7 +751,11 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Clear Queue",
 		Callback = function()
 			self:ClearQueue()
-			self:_notify(PrestineLib, "Queue", "Queue cleared.", 2)
+			PrestineLib:AddNotification({
+				TitleText = "Queue",
+				ContentText = "Succesfully Cleared Queue!",
+				Duration = 3
+			})
 		end
 	})
 
@@ -744,7 +764,11 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Cancel Movement",
 		Callback = function()
 			self:Cancel()
-			self:_notify(PrestineLib, "Cancelled", "Movement cancelled.", 2)
+			PrestineLib:AddNotification({
+				TitleText = "Movement",
+				ContentText = "Succesfully Cancelled Movement",
+				Duration = 5
+			})
 		end
 	})
 
