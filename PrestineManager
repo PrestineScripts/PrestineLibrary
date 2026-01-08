@@ -81,18 +81,29 @@ local function buildCaches()
 	table.clear(Cached.Textures)
 	table.clear(Cached.Effects)
 
+	local count = 0
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("Decal") or inst:IsA("Texture") then
 			table.insert(Cached.Textures, inst)
-		elseif inst:IsA("ParticleEmitter")
-			or inst:IsA("Trail")
-			or inst:IsA("Beam") then
+		elseif inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") then
 			table.insert(Cached.Effects, inst)
+		end
+
+		count += 1
+		if count % 200 == 0 then
+			task.wait()
 		end
 	end
 end
 
 buildCaches()
+
+task.spawn(function()
+	while true do
+		task.wait(15)
+		buildCaches()
+	end
+end)
 
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
@@ -1095,7 +1106,7 @@ function PrestineManager:SetUpStarterUI()
 	end
 	
 	self._uiConn = task.spawn(function()
-		while true do
+		while PrestineLib and PrestineLib.Open do
 			task.wait(0.25)
 	
 			local char = player.Character
@@ -1162,14 +1173,22 @@ function PrestineManager:SetUpStarterUI()
 		end
 	end)
 
+	if self._uiConn then
+		task.cancel(self._uiConn)
+		self._uiConn = nil
+	end
 
-	if self._fpsConn then self._fpsConn:Disconnect() end
-	self._fpsConn = RunService.RenderStepped:Connect(function()
-		PrestineManager._fpsFrames += 1
-		if os.clock() - PrestineManager._fpsLast >= 1 then
-			PrestineManager._fps = PrestineManager._fpsFrames
-			PrestineManager._fpsFrames = 0
-			PrestineManager._fpsLast = os.clock()
+	self._fpsConn = task.spawn(function()
+		while PrestineLib and PrestineLib.Open do
+			local frames = 0
+			local start = os.clock()
+	
+			while os.clock() - start < 1 do
+				frames += 1
+				task.wait()
+			end
+	
+			PrestineManager._fps = frames
 		end
 	end)
 end
