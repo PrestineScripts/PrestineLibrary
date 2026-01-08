@@ -1075,7 +1075,7 @@ function PrestineManager:SetUpStarterUI()
 	end
 	
 	self._uiConn = task.spawn(function()
-		while PrestineLib and PrestineLib.Open do
+		while PrestineLib do
 			task.wait(0.25)
 	
 			local char = player.Character
