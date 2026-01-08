@@ -384,6 +384,8 @@ function PrestineManager:_bindCharacterSafety()
 	end
 end
 
+local SERVER_START = os.clock()
+
 local function formatUptime(seconds)
 	seconds = math.floor(seconds)
 
@@ -409,13 +411,15 @@ local function getServerInfoText()
 		(game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved") or
 		"Public"
 
+	local uptime = os.clock() - SERVER_START
+
 	return "Game Name: " .. game.Name ..
 		"\nPlace ID: " .. game.PlaceId ..
 		"\nGame ID: " .. game.GameId ..
 		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
 		"\nServer Type: " .. serverType ..
 		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
-		"\nUptime: " .. formatUptime(workspace:GetServerTimeNow()) ..
+		"\nUptime: " .. formatUptime(uptime) ..
 		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
 		"\nGravity: " .. tostring(workspace.Gravity)
 end
