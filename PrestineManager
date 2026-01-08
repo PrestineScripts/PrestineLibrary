@@ -1142,13 +1142,8 @@ function PrestineManager:SetUpStarterUI()
 		end
 	end)
 
-	if self._uiConn then
-		task.cancel(self._uiConn)
-		self._uiConn = nil
-	end
-
 	self._fpsConn = task.spawn(function()
-		while PrestineLib and PrestineLib.Open do
+		while PrestineLib do
 			local frames = 0
 			local start = os.clock()
 	
