@@ -1119,8 +1119,6 @@ function PrestineManager:SetUpStarterUI()
 					)
 				end
 			end
-
-			print("whats happening")
 	
 			if os.clock() - self._lastServerUpdate >= 1 then
 				self._lastServerUpdate = os.clock()
