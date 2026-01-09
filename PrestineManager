@@ -10,7 +10,8 @@ local player = Players.LocalPlayer
 PrestineManager.Config = {
 	TravelMethod = "Teleport",
 	TweenSpeed = 150,
-	TeleportDelay = 0
+	TeleportDelay = 0,
+	QueueMode = false
 }
 
 PrestineManager.Profiles = {
@@ -316,9 +317,16 @@ function PrestineManager:StartQueue()
 end
 
 function PrestineManager:Travel(target)
-	self:Cancel()
-	self:Enqueue(target)
-	self:StartQueue()
+	if self.Config.QueueMode then
+		self:Enqueue(target)
+		if not self.State.Busy then
+			self:StartQueue()
+		end
+	else
+		self:Cancel()
+		self:Enqueue(target)
+		self:StartQueue()
+	end
 end
 
 function PrestineManager:TravelMultiple(list)
@@ -1083,6 +1091,18 @@ function PrestineManager:SetUpStarterUI()
 	    Callback = function(key)
 			PrestineLib.GUIHotkey = key
 	    end
+	})
+
+	PrestineLib:AddToggle({
+		Tab = "Settings",
+		MainName = "Travel Queue Mode",
+		DefaultState = false,
+		Callback = function(state)
+			PrestineManager.Config.QueueMode = state
+			if not state then
+				PrestineManager:Cancel()
+			end
+		end
 	})
 
 	PrestineLib:AddSaveToggle({
