@@ -1096,7 +1096,7 @@ function PrestineManager:SetUpStarterUI()
 	PrestineLib:AddToggle({
 		Tab = "Settings",
 		MainName = "Travel Queue Mode",
-		DefaultState = false,
+		DefaultState = true,
 		Callback = function(state)
 			PrestineManager.Config.QueueMode = state
 			if not state then
