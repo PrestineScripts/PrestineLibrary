@@ -190,11 +190,9 @@ local function formatUptime(seconds)
 	return table.concat(parts, " ")
 end
 
--- HELPER: Fetch Subtitle Label from a Button component to update it dynamically
 local function getSubtitleLabel(btnContainer)
 	if typeof(btnContainer) == "Instance" then
 		for _, v in ipairs(btnContainer:GetChildren()) do
-			-- The subtitle text label always has TextSize 11 in Components.lua
 			if v:IsA("TextLabel") and v.TextSize == 11 then
 				return v
 			end
@@ -204,7 +202,6 @@ local function getSubtitleLabel(btnContainer)
 end
 
 local function getServerInfoText()
-	-- Removed PrivateServerId check completely to fix console warn spamming
 	return "Game Name: " .. game.Name ..
 		"\nPlace ID: " .. game.PlaceId ..
 		"\nGame ID: " .. game.GameId ..
@@ -1343,7 +1340,28 @@ function PrestineManager:Init(PrestineLib, options)
 	
 	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
 
-	-- Make sure we don't try to add elements to a tab you haven't explicitly created
+	-- Default Icons dictionary for Automatic Tab Creation
+	local defaultTabIcons = {
+		["Home"] = "Home",
+		["Player"] = "User",
+		["Performance"] = "Gauge",
+		["Utility"] = "Hammer",
+		["Settings"] = "Settings",
+		["Config"] = "Info"
+	}
+	
+	-- Automatically construct the Tabs table based on what you asked to initialize
+	local tabsToCreate = {}
+	for _, tabName in ipairs(tabsToInit) do
+		table.insert(tabsToCreate, {
+			Name = tabName,
+			Icon = defaultTabIcons[tabName] or "Info" -- Default to Info if no icon mapping exists
+		})
+	end
+	
+	-- Create the tabs inside the UI
+	PrestineLib:CreateTab(tabsToCreate)
+
 	local Main = getgenv()._PrestineMain
 	local function hasTab(name)
 		return Main and Main:FindFirstChild(name .. "Contents") ~= nil
