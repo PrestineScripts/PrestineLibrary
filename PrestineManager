@@ -59,6 +59,70 @@ PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._infJump = false
 
+local isfolder = isfolder or function() return false end
+local makefolder = makefolder or function() end
+local isfile = isfile or function() return false end
+local readfile = readfile or function() return "" end
+local writefile = writefile or function() end
+local listfiles = listfiles or function() return {} end
+local delfile = delfile or function() end
+
+local ConfigFolder = "PrestineConfigs"
+local ConfigSubFolder = ConfigFolder .. "/" .. game.PlaceId
+
+local function initFolders()
+	pcall(function()
+		if not isfolder(ConfigFolder) then makefolder(ConfigFolder) end
+		if not isfolder(ConfigSubFolder) then makefolder(ConfigSubFolder) end
+	end)
+end
+
+local function getConfigs()
+	initFolders()
+	local list = {}
+	pcall(function()
+		for _, file in ipairs(listfiles(ConfigSubFolder)) do
+			local name = file:match("([^/\\]+)%.json$")
+			if name then table.insert(list, name) end
+		end
+	end)
+	if #list == 0 then table.insert(list, "Default") end
+	return list
+end
+
+local function saveConfig(name)
+	initFolders()
+	pcall(function()
+		local data = HttpService:JSONEncode(PrestineManager.Config)
+		writefile(ConfigSubFolder .. "/" .. name .. ".json", data)
+	end)
+end
+
+local function loadConfig(name)
+	initFolders()
+	local success = false
+	pcall(function()
+		local path = ConfigSubFolder .. "/" .. name .. ".json"
+		if isfile(path) then
+			local decoded = HttpService:JSONDecode(readfile(path))
+			if type(decoded) == "table" then
+				for k, v in pairs(decoded) do
+					PrestineManager.Config[k] = v
+				end
+				success = true
+			end
+		end
+	end)
+	return success
+end
+
+local function deleteConfig(name)
+	pcall(function()
+		local path = ConfigSubFolder .. "/" .. name .. ".json"
+		if isfile(path) then delfile(path) end
+	end)
+end
+
 local SERVER_START = os.clock()
 
 local function getCharacter()
@@ -1016,6 +1080,117 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Auto Save Config",
 		DefaultState = true
 	})
+
+	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Config Management" })
+
+	local selectedConfig = "Default"
+	local configNameInput = "Default"
+	local autoloadFile = ConfigFolder .. "/" .. game.PlaceId .. "_autoload.txt"
+
+	local configDropdown
+	configDropdown = PrestineLib:AddDropdown({
+		Tab = "Settings",
+		MainTitle = "Select Config",
+		ChoiceList = getConfigs(),
+		DefaultChoice = "Default",
+		Multiple = false,
+		Callback = function(v)
+			selectedConfig = typeof(v) == "table" and v[1] or v
+		end
+	})
+
+	PrestineLib:AddInput({
+		Tab = "Settings",
+		MainTitle = "Config Name",
+		PlaceHolder = "Enter config name...",
+		Callback = function(v)
+			configNameInput = v
+		end
+	})
+
+	local function refreshDropdown()
+		pcall(function()
+			if configDropdown and configDropdown.Refresh then
+				configDropdown:Refresh(getConfigs())
+			elseif configDropdown and configDropdown.SetList then
+				configDropdown:SetList(getConfigs())
+			end
+		end)
+	end
+
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Create / Save Config",
+		Callback = function()
+			if configNameInput and configNameInput ~= "" then
+				saveConfig(configNameInput)
+				refreshDropdown()
+				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Saved " .. configNameInput, Duration = 3 })
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Overwrite Selected Config",
+		Callback = function()
+			if selectedConfig and selectedConfig ~= "" then
+				saveConfig(selectedConfig)
+				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 })
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Load Selected Config",
+		Callback = function()
+			if selectedConfig and selectedConfig ~= "" then
+				if loadConfig(selectedConfig) then
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Loaded " .. selectedConfig, Duration = 3 })
+				else
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Failed to load", Duration = 3 })
+				end
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Delete Selected Config",
+		Callback = function()
+			if selectedConfig and selectedConfig ~= "" then
+				deleteConfig(selectedConfig)
+				refreshDropdown()
+				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 })
+			end
+		end
+	})
+
+	PrestineLib:AddButton({
+		Tab = "Settings",
+		MainName = "Set As Autoload",
+		Callback = function()
+			if selectedConfig and selectedConfig ~= "" then
+				initFolders()
+				pcall(function() writefile(autoloadFile, selectedConfig) end)
+				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 })
+			end
+		end
+	})
+
+	task.spawn(function()
+		pcall(function()
+			if isfile(autoloadFile) then
+				local autoName = readfile(autoloadFile)
+				if autoName and autoName ~= "" then
+					if loadConfig(autoName) then
+						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Auto-loaded " .. autoName, Duration = 3 })
+					end
+				end
+			end
+		end)
+	end)
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
