@@ -1,0 +1,1783 @@
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local Lighting = game:GetService("Lighting")
+local UIS = game:GetService("UserInputService")
+
+local PrestineLib = getgenv().PrestineLib
+local mk = getgenv()._PrestineMk
+local tw = getgenv()._PrestineTw
+local PrestineUI = getgenv()._PrestineUI
+local Main = getgenv()._PrestineMain
+local Top = getgenv()._PrestineTop
+local ExitButton = getgenv()._PrestineExitButton
+local MinimizeButton = getgenv()._PrestineMinimizeButton
+
+local PrestineStartup = Instance.new("ScreenGui")
+PrestineStartup.ResetOnSpawn = false
+PrestineStartup.Name = "PrestineStartup"
+PrestineStartup.Parent = game:GetService("CoreGui")
+PrestineStartup.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local InstanceScreen = Instance.new("ScreenGui")
+InstanceScreen.Name = "Instance"
+InstanceScreen.Parent = game:GetService("CoreGui")
+InstanceScreen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+InstanceScreen.IgnoreGuiInset = true
+InstanceScreen.ResetOnSpawn = false
+
+local BackgroundSU = Instance.new("Frame")
+BackgroundSU.Name = "Background"
+BackgroundSU.Parent = PrestineStartup
+BackgroundSU.AnchorPoint = Vector2.new(0.5, 0.5)
+BackgroundSU.BackgroundColor3 = Color3.fromRGB(16, 18, 28)
+BackgroundSU.BorderSizePixel = 0
+BackgroundSU.Position = UDim2.new(0.5, 0, 0.5, 0)
+BackgroundSU.Size = UDim2.new(0, 200, 0, 80)
+BackgroundSU.BackgroundTransparency = 1
+
+local UICornerSU = Instance.new("UICorner")
+UICornerSU.CornerRadius = UDim.new(0, 6)
+UICornerSU.Parent = BackgroundSU
+
+local UIScaleSU = Instance.new("UIScale")
+UIScaleSU.Scale = 0.92
+UIScaleSU.Parent = BackgroundSU
+
+local GlowSU = Instance.new("UIStroke")
+GlowSU.Name = "Glow"
+GlowSU.Parent = BackgroundSU
+GlowSU.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+GlowSU.Thickness = 1
+GlowSU.Color = Color3.fromRGB(100, 150, 230)
+GlowSU.Transparency = 1
+
+local MainTitleSU = Instance.new("TextLabel")
+MainTitleSU.Name = "MainTitle"
+MainTitleSU.Parent = BackgroundSU
+MainTitleSU.AnchorPoint = Vector2.new(0.5, 0.5)
+MainTitleSU.BackgroundTransparency = 1
+MainTitleSU.Position = UDim2.new(0.600000024, 0, 0.5, 0)
+MainTitleSU.Size = UDim2.new(0, 150, 0, 35)
+MainTitleSU.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+MainTitleSU.Text = "Prestine"
+MainTitleSU.TextColor3 = Color3.fromRGB(220, 220, 220)
+MainTitleSU.TextScaled = true
+MainTitleSU.TextWrapped = true
+MainTitleSU.TextTransparency = 1
+
+local TitleScale = Instance.new("UIScale")
+TitleScale.Scale = 0.98
+TitleScale.Parent = MainTitleSU
+
+local LogoSU = Instance.new("ImageLabel")
+LogoSU.Name = "Logo"
+LogoSU.Parent = BackgroundSU
+LogoSU.AnchorPoint = Vector2.new(0.5, 0.5)
+LogoSU.BackgroundTransparency = 1
+LogoSU.Position = UDim2.new(0.180000007, 0, 0.493750006, 0)
+LogoSU.Size = UDim2.new(0, 50, 0, 40)
+LogoSU.Image = "rbxassetid://136883090606151"
+LogoSU.ImageColor3 = Color3.fromRGB(220, 220, 220)
+LogoSU.ImageTransparency = 1
+
+local LogoScale = Instance.new("UIScale")
+LogoScale.Scale = 0.92
+LogoScale.Parent = LogoSU
+
+local function playIn()
+	TweenService:Create(BackgroundSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+	TweenService:Create(UIScaleSU, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	TweenService:Create(GlowSU, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.45}):Play()
+	TweenService:Create(LogoSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0}):Play()
+	TweenService:Create(MainTitleSU, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+	TweenService:Create(LogoScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	TweenService:Create(TitleScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+end
+
+local function expandToMain()
+	TweenService:Create(UICornerSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 4)}):Play()
+	TweenService:Create(BackgroundSU, TweenInfo.new(0.38, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 500, 0, 420)}):Play()
+	TweenService:Create(LogoSU, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {ImageTransparency = 1}):Play()
+	TweenService:Create(MainTitleSU, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
+	TweenService:Create(GlowSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.8}):Play()
+end
+
+local function dissolveOut()
+	TweenService:Create(UIScaleSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 1.05}):Play()
+	local t = TweenService:Create(BackgroundSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1})
+	t:Play()
+	TweenService:Create(GlowSU, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Transparency = 1}):Play()
+	t.Completed:Once(function()
+		if PrestineStartup then PrestineStartup:Destroy() end
+		if InstanceScreen then InstanceScreen:Destroy() end
+	end)
+end
+
+playIn()
+task.delay(0.55, function() expandToMain() end)
+task.delay(1.05, function() dissolveOut() end)
+
+local UIGradientBG = Instance.new("UIGradient")
+UIGradientBG.Parent = Main
+UIGradientBG.Rotation = 90
+UIGradientBG.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0.000, Color3.fromRGB(14, 16, 26)),
+	ColorSequenceKeypoint.new(1.000, Color3.fromRGB(10, 12, 20))
+}
+
+local UICorner = Instance.new("UICorner")
+UICorner.Parent = Main
+
+local UICorner_2 = Instance.new("UICorner")
+UICorner_2.Parent = Top
+
+local TopGradient = Instance.new("UIGradient")
+TopGradient.Parent = Top
+TopGradient.Rotation = 90
+TopGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 20, 30)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 16, 24)),
+})
+
+local TopStroke = Instance.new("UIStroke")
+TopStroke.Parent = Top
+TopStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+TopStroke.Thickness = 1
+TopStroke.Color = Color3.fromRGB(200, 210, 230)
+TopStroke.Transparency = 0.82
+
+local MainName = Instance.new("TextLabel")
+MainName.Name = "MainName"
+MainName.Parent = Top
+MainName.AnchorPoint = Vector2.new(0,0.5)
+MainName.BackgroundTransparency = 1
+MainName.Position = UDim2.new(0,14,0.5,0)
+MainName.Size = UDim2.new(0,260,0,26)
+MainName.FontFace = Font.new("rbxasset://fonts/families/Zekton.json",Enum.FontWeight.Bold)
+MainName.Text = ""
+MainName.TextColor3 = Color3.fromRGB(220,220,220)
+MainName.TextScaled = true
+MainName.TextXAlignment = Enum.TextXAlignment.Left
+
+local CreditsName = Instance.new("TextLabel")
+CreditsName.Name = "CreditsName"
+CreditsName.Parent = Top
+CreditsName.AnchorPoint = Vector2.new(1,0.5)
+CreditsName.BackgroundTransparency = 1
+CreditsName.Position = UDim2.new(1,-90,0.5,0)
+CreditsName.Size = UDim2.new(0,90,0,12)
+CreditsName.FontFace = Font.new("rbxasset://fonts/families/Zekton.json",Enum.FontWeight.Bold)
+CreditsName.Text = ""
+CreditsName.TextColor3 = Color3.fromRGB(120,120,120)
+CreditsName.TextScaled = true
+CreditsName.TextXAlignment = Enum.TextXAlignment.Right
+
+local UICorner_3 = Instance.new("UICorner")
+UICorner_3.CornerRadius = UDim.new(0, 4)
+UICorner_3.Parent = ExitButton
+
+local ExitIcon = Instance.new("ImageLabel")
+ExitIcon.Parent = ExitButton
+ExitIcon.BackgroundTransparency = 1
+ExitIcon.AnchorPoint = Vector2.new(0.5,0.5)
+ExitIcon.Position = UDim2.fromScale(0.5,0.5)
+ExitIcon.Size = UDim2.new(0,14,0,14)
+ExitIcon.Image = "rbxassetid://6031094678"
+ExitIcon.ImageColor3 = Color3.fromRGB(180,180,180)
+
+local UICorner_4 = Instance.new("UICorner")
+UICorner_4.CornerRadius = UDim.new(0, 4)
+UICorner_4.Parent = MinimizeButton
+
+local MinimizeIcon = Instance.new("ImageLabel")
+MinimizeIcon.Parent = MinimizeButton
+MinimizeIcon.BackgroundTransparency = 1
+MinimizeIcon.AnchorPoint = Vector2.new(0.5,0.5)
+MinimizeIcon.Position = UDim2.fromScale(0.5,0.5)
+MinimizeIcon.Size = UDim2.new(0,14,0,14)
+MinimizeIcon.Image = "rbxassetid://6031091002"
+MinimizeIcon.ImageColor3 = Color3.fromRGB(180,180,180)
+
+local function buttonFX(btn, icon, hoverColor)
+	local scale = Instance.new("UIScale")
+	scale.Parent = btn
+	scale.Scale = 1
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(scale,TweenInfo.new(0.12),{Scale=1.1}):Play()
+		TweenService:Create(icon,TweenInfo.new(0.12),{ImageColor3=hoverColor}):Play()
+	end)
+
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(scale,TweenInfo.new(0.14),{Scale=1}):Play()
+		TweenService:Create(icon,TweenInfo.new(0.14),{ImageColor3=Color3.fromRGB(180,180,180)}):Play()
+	end)
+
+	btn.MouseButton1Down:Connect(function()
+		TweenService:Create(scale,TweenInfo.new(0.08),{Scale=0.9}):Play()
+	end)
+
+	btn.MouseButton1Up:Connect(function()
+		TweenService:Create(scale,TweenInfo.new(0.12,Enum.EasingStyle.Back),{Scale=1}):Play()
+	end)
+end
+
+buttonFX(ExitButton,ExitIcon,Color3.fromRGB(255,90,90))
+buttonFX(MinimizeButton,MinimizeIcon,Color3.fromRGB(120,180,255))
+
+spawn(function()
+	local t = 0
+	while Top and Top.Parent do
+		t = t + RunService.RenderStepped:Wait() * 40
+		TopStroke.Transparency = 0.82 + math.sin(t) * 0.05
+		TopGradient.Rotation = (TopGradient.Rotation + 0.04) % 360
+	end
+end)
+
+local TabBG = Instance.new("Frame")
+TabBG.Name = "TabBG"
+TabBG.Parent = Main
+TabBG.AnchorPoint = Vector2.new(0.5, 0.5)
+TabBG.BackgroundColor3 = Color3.fromRGB(14, 16, 24)
+TabBG.BorderColor3 = Color3.fromRGB(0, 0, 0)
+TabBG.BorderSizePixel = 0
+TabBG.Position = UDim2.new(0, 75, 0, 227)
+TabBG.Size = UDim2.new(0, 151, 0, 384)
+
+local UICorner_5 = Instance.new("UICorner")
+UICorner_5.CornerRadius = UDim.new(0, 4)
+UICorner_5.Parent = TabBG
+
+local function tween(obj, info, props)
+	local t = TweenService:Create(obj, info, props)
+	t:Play()
+	return t
+end
+
+local ProfileFrame = Instance.new("Frame")
+ProfileFrame.Name = "ProfileFrame"
+ProfileFrame.Parent = TabBG
+ProfileFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+ProfileFrame.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
+ProfileFrame.BackgroundTransparency = 0.35
+ProfileFrame.BorderSizePixel = 0
+ProfileFrame.Position = UDim2.new(0, 75, 0, 348)
+ProfileFrame.Size = UDim2.new(0, 145, 0, 68)
+ProfileFrame.ClipsDescendants = false
+
+local UICornerPF = Instance.new("UICorner")
+UICornerPF.CornerRadius = UDim.new(0, 4)
+UICornerPF.Parent = ProfileFrame
+
+local UIStrokePF = Instance.new("UIStroke")
+UIStrokePF.Parent = ProfileFrame
+UIStrokePF.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStrokePF.LineJoinMode = Enum.LineJoinMode.Round
+UIStrokePF.Thickness = 1
+UIStrokePF.Color = Color3.fromRGB(180, 195, 225)
+UIStrokePF.Transparency = 0.82
+
+local GlowBack = Instance.new("ImageLabel")
+GlowBack.Name = "GlowBack"
+GlowBack.Parent = ProfileFrame
+GlowBack.BackgroundTransparency = 1
+GlowBack.AnchorPoint = Vector2.new(0.5, 0.5)
+GlowBack.Position = UDim2.fromScale(0.5, 0.5)
+GlowBack.Size = UDim2.new(1, 24, 1, 24)
+GlowBack.Image = "rbxassetid://1316045217"
+GlowBack.ImageColor3 = Color3.fromRGB(80, 130, 220)
+GlowBack.ImageTransparency = 0.92
+GlowBack.ZIndex = ProfileFrame.ZIndex - 5
+
+local BGGradient = Instance.new("UIGradient")
+BGGradient.Parent = ProfileFrame
+BGGradient.Rotation = 25
+BGGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 22, 32)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 12, 20))
+})
+
+local Shine = Instance.new("Frame")
+Shine.Name = "Shine"
+Shine.Parent = ProfileFrame
+Shine.BackgroundTransparency = 1
+Shine.BorderSizePixel = 0
+Shine.Position = UDim2.new(-1.2, 0, 0, 0)
+Shine.Size = UDim2.new(1, 0, 1, 0)
+Shine.ZIndex = ProfileFrame.ZIndex + 5
+
+local ShineGrad = Instance.new("UIGradient")
+ShineGrad.Parent = Shine
+ShineGrad.Rotation = 25
+ShineGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+ShineGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(0.46, 1),
+	NumberSequenceKeypoint.new(0.5, 0.65),
+	NumberSequenceKeypoint.new(0.54, 1),
+	NumberSequenceKeypoint.new(1, 1)
+})
+
+local AccentLine = Instance.new("Frame")
+AccentLine.Name = "AccentLine"
+AccentLine.Parent = ProfileFrame
+AccentLine.AnchorPoint = Vector2.new(0, 0.5)
+AccentLine.Position = UDim2.new(0, 0, 0.5, 0)
+AccentLine.Size = UDim2.new(0, 4, 1, -18)
+AccentLine.BackgroundColor3 = Color3.fromRGB(90, 145, 255)
+AccentLine.BackgroundTransparency = 0.3
+AccentLine.BorderSizePixel = 0
+
+local AccentCorner = Instance.new("UICorner")
+AccentCorner.CornerRadius = UDim.new(1, 0)
+AccentCorner.Parent = AccentLine
+
+local ProfileImage = Instance.new("ImageLabel")
+ProfileImage.Name = "ProfileImage"
+ProfileImage.Parent = ProfileFrame
+ProfileImage.AnchorPoint = Vector2.new(0, 0.5)
+ProfileImage.BackgroundColor3 = Color3.fromRGB(14, 16, 24)
+ProfileImage.BackgroundTransparency = 0.12
+ProfileImage.BorderSizePixel = 0
+ProfileImage.Position = UDim2.new(0, 12, 0.5, 0)
+ProfileImage.Size = UDim2.new(0, 48, 0, 48)
+ProfileImage.ScaleType = Enum.ScaleType.Fit
+ProfileImage.ZIndex = ProfileFrame.ZIndex + 2
+
+local UICornerPFI = Instance.new("UICorner")
+UICornerPFI.CornerRadius = UDim.new(1, 0)
+UICornerPFI.Parent = ProfileImage
+
+local PFPStroke = Instance.new("UIStroke")
+PFPStroke.Parent = ProfileImage
+PFPStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+PFPStroke.Thickness = 1
+PFPStroke.Color = Color3.fromRGB(170, 190, 225)
+PFPStroke.Transparency = 0.6
+
+local PFPGlow = Instance.new("ImageLabel")
+PFPGlow.Name = "PFPGlow"
+PFPGlow.Parent = ProfileImage
+PFPGlow.BackgroundTransparency = 1
+PFPGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+PFPGlow.Position = UDim2.fromScale(0.5, 0.5)
+PFPGlow.Size = UDim2.new(1, 13, 1, 13)
+PFPGlow.Image = "rbxassetid://1316045217"
+PFPGlow.ImageColor3 = Color3.fromRGB(90, 140, 220)
+PFPGlow.ImageTransparency = 0.84
+PFPGlow.ZIndex = ProfileImage.ZIndex - 1
+
+local UICornerPFPG = Instance.new("UICorner")
+UICornerPFPG.CornerRadius = UDim.new(0, 4)
+UICornerPFPG.Parent = PFPGlow
+
+local thumbSuccess, thumb = pcall(function()
+	return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+end)
+if thumbSuccess and thumb then
+	ProfileImage.Image = thumb
+end
+
+local TextWrap = Instance.new("Frame")
+TextWrap.Name = "TextWrap"
+TextWrap.Parent = ProfileFrame
+TextWrap.BackgroundTransparency = 1
+TextWrap.ClipsDescendants = true
+TextWrap.ZIndex = ProfileFrame.ZIndex + 3
+
+local DisplayText = Instance.new("TextLabel")
+DisplayText.Name = "PlayerDisplay"
+DisplayText.Parent = TextWrap
+DisplayText.BackgroundTransparency = 1
+DisplayText.Font = Enum.Font.GothamSemibold
+DisplayText.Text = player.DisplayName
+DisplayText.TextColor3 = Color3.fromRGB(238, 238, 238)
+DisplayText.TextXAlignment = Enum.TextXAlignment.Left
+DisplayText.TextYAlignment = Enum.TextYAlignment.Center
+DisplayText.TextScaled = true
+DisplayText.TextWrapped = false
+
+local DisplayConstraint = Instance.new("UITextSizeConstraint")
+DisplayConstraint.Parent = DisplayText
+DisplayConstraint.MinTextSize = 10
+DisplayConstraint.MaxTextSize = 16
+
+local UsernameText = Instance.new("TextLabel")
+UsernameText.Name = "PlayerName"
+UsernameText.Parent = TextWrap
+UsernameText.BackgroundTransparency = 1
+UsernameText.Position = UDim2.new(0, 0, 0, 34)
+UsernameText.Size = UDim2.new(1, 0, 0, 20)
+UsernameText.Font = Enum.Font.Gotham
+UsernameText.Text = "@" .. player.Name
+UsernameText.TextColor3 = Color3.fromRGB(170, 170, 170)
+UsernameText.TextXAlignment = Enum.TextXAlignment.Left
+UsernameText.TextYAlignment = Enum.TextYAlignment.Center
+UsernameText.TextScaled = true
+UsernameText.TextWrapped = false
+
+local UserConstraint = Instance.new("UITextSizeConstraint")
+UserConstraint.Parent = UsernameText
+UserConstraint.MinTextSize = 8
+UserConstraint.MaxTextSize = 12
+
+local Tag = Instance.new("TextLabel")
+Tag.Name = "Tag"
+Tag.Parent = ProfileFrame
+Tag.BackgroundTransparency = 1
+Tag.AnchorPoint = Vector2.new(1, 0)
+Tag.Position = UDim2.new(1, -20, 0, 5)
+Tag.Size = UDim2.new(0, 50, 0, 15)
+Tag.Font = Enum.Font.GothamSemibold
+Tag.Text = "USER"
+Tag.TextColor3 = Color3.fromRGB(110, 160, 255)
+Tag.TextScaled = true
+Tag.TextTransparency = 0.12
+Tag.TextXAlignment = Enum.TextXAlignment.Center
+Tag.ZIndex = ProfileFrame.ZIndex + 4
+
+local Layout = Instance.new("UIListLayout")
+Layout.Parent = TextWrap
+Layout.FillDirection = Enum.FillDirection.Vertical
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Padding = UDim.new(0, -5)
+
+DisplayText.LayoutOrder = 1
+UsernameText.LayoutOrder = 2
+
+DisplayText.TextScaled = true
+UsernameText.TextScaled = true
+
+DisplayText.Position = UDim2.new(0, 0, 0, 0)
+DisplayText.Size = UDim2.new(1, 5, 0, 20)
+
+UsernameText.Position = UDim2.new(0, 0, 0, 34)
+UsernameText.Size = UDim2.new(1, 0, 0, 15)
+
+TextWrap.Position = UDim2.new(0, 65, 0, 20)
+TextWrap.Size = UDim2.new(1, -70, 0, 50)
+
+local FrameScale = Instance.new("UIScale")
+FrameScale.Parent = ProfileFrame
+FrameScale.Scale = 0.94
+
+ProfileFrame.BackgroundTransparency = 1
+UIStrokePF.Transparency = 1
+GlowBack.ImageTransparency = 1
+AccentLine.BackgroundTransparency = 1
+PFPStroke.Transparency = 1
+PFPGlow.ImageTransparency = 1
+DisplayText.TextTransparency = 1
+UsernameText.TextTransparency = 1
+Tag.TextTransparency = 1
+
+local basePos = ProfileFrame.Position
+local baseRot = BGGradient.Rotation
+
+tween(FrameScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+tween(ProfileFrame, TweenInfo.new(0.33, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.35})
+tween(UIStrokePF, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.82})
+tween(GlowBack, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.92})
+tween(AccentLine, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.3})
+tween(PFPStroke, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.6})
+tween(PFPGlow, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.84})
+
+task.delay(0.08, function()
+	if DisplayText and DisplayText.Parent then tween(DisplayText, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}) end
+end)
+task.delay(0.12, function()
+	if UsernameText and UsernameText.Parent then tween(UsernameText, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}) end
+end)
+task.delay(0.16, function()
+	if Tag and Tag.Parent then tween(Tag, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0.12}) end
+end)
+
+local function shineSweep()
+	if not Shine or not Shine.Parent then return end
+	Shine.Position = UDim2.new(-1.2, 0, 0, 0)
+	tween(Shine, TweenInfo.new(0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(1.2, 0, 0, 0)})
+end
+
+task.delay(0.1, shineSweep)
+
+local hovering = false
+local busyPulse = false
+
+local function pulse()
+	if busyPulse then return end
+	busyPulse = true
+	tween(UIStrokePF, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.45})
+	tween(GlowBack, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.78})
+	tween(PFPStroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.28})
+	tween(PFPGlow, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.72})
+	task.delay(0.12, function()
+		if not ProfileFrame or not ProfileFrame.Parent then return end
+		tween(UIStrokePF, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.82})
+		tween(GlowBack, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.92})
+		tween(PFPStroke, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.6})
+		tween(PFPGlow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.84})
+		task.delay(0.2, function()
+			busyPulse = false
+		end)
+	end)
+end
+
+local function hoverOn()
+	hovering = true
+	tween(FrameScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1.05})
+	tween(ProfileFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = basePos + UDim2.fromOffset(0, -2)})
+	tween(UIStrokePF, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.35})
+	tween(GlowBack, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.78})
+	tween(PFPStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.25})
+	tween(PFPGlow, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.70})
+	shineSweep()
+	pulse()
+end
+
+local function hoverOff()
+	hovering = false
+	tween(FrameScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1})
+	tween(ProfileFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = basePos})
+	tween(UIStrokePF, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.82})
+	tween(GlowBack, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.92})
+	tween(PFPStroke, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.6})
+	tween(PFPGlow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.84})
+end
+
+ProfileFrame.MouseEnter:Connect(hoverOn)
+ProfileFrame.MouseLeave:Connect(hoverOff)
+
+ProfileFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		tween(FrameScale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.98})
+		pulse()
+		shineSweep()
+	end
+end)
+
+ProfileFrame.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		tween(FrameScale, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = hovering and 1.05 or 1})
+	end
+end)
+
+task.spawn(function()
+	local t0 = tick()
+	while ProfileFrame and ProfileFrame.Parent do
+		local t = tick() - t0
+		if not hovering then
+			BGGradient.Rotation = baseRot + (math.sin(t * 0.75) * 18)
+			GlowBack.ImageTransparency = 0.92 - (math.abs(math.sin(t * 0.9)) * 0.06)
+			UIStrokePF.Transparency = 0.82 - (math.abs(math.sin(t * 0.85)) * 0.06)
+		end
+		RunService.Heartbeat:Wait()
+	end
+end)
+
+player:GetPropertyChangedSignal("DisplayName"):Connect(function()
+	DisplayText.Text = player.DisplayName
+end)
+
+player:GetPropertyChangedSignal("Name"):Connect(function()
+	UsernameText.Text = "@" .. player.Name
+end)
+
+local Shadow2 = Instance.new("Frame")
+Shadow2.Name = "Shadow2"
+Shadow2.Parent = Main
+Shadow2.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Shadow2.BackgroundTransparency = 1
+Shadow2.BorderSizePixel = 0
+Shadow2.Position = UDim2.new(0, 250, 0, 210)
+Shadow2.Size = UDim2.new(0, 510, 0, 430)
+Shadow2.ZIndex = 0
+Shadow2.ClipsDescendants = false
+
+local UICorner_24 = Instance.new("UICorner")
+UICorner_24.CornerRadius = UDim.new(0, 6)
+UICorner_24.Parent = Shadow2
+
+local UIStrokeS2 = Instance.new("UIStroke")
+UIStrokeS2.Parent = Shadow2
+UIStrokeS2.Color = Color3.fromRGB(60, 90, 160)
+UIStrokeS2.LineJoinMode = Enum.LineJoinMode.Round
+UIStrokeS2.Thickness = 7
+UIStrokeS2.Transparency = 0.72
+
+local Shadow1 = Instance.new("Frame")
+Shadow1.Name = "Shadow1"
+Shadow1.Parent = Main
+Shadow1.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Shadow1.BackgroundTransparency = 1
+Shadow1.BorderSizePixel = 0
+Shadow1.Position = UDim2.new(0, 250, 0, 210)
+Shadow1.Size = UDim2.new(0, 500, 0, 420)
+Shadow1.ZIndex = 0
+Shadow1.ClipsDescendants = false
+
+local UICorner_25 = Instance.new("UICorner")
+UICorner_25.CornerRadius = UDim.new(0, 6)
+UICorner_25.Parent = Shadow1
+
+local UIStrokeS1 = Instance.new("UIStroke")
+UIStrokeS1.Parent = Shadow1
+UIStrokeS1.Color = Color3.fromRGB(70, 110, 180)
+UIStrokeS1.LineJoinMode = Enum.LineJoinMode.Round
+UIStrokeS1.Thickness = 8
+UIStrokeS1.Transparency = 0.72
+
+local AuraOuter = Instance.new("ImageLabel")
+AuraOuter.Name = "AuraOuter"
+AuraOuter.Parent = Shadow2
+AuraOuter.BackgroundTransparency = 1
+AuraOuter.AnchorPoint = Vector2.new(0.5, 0.5)
+AuraOuter.Position = UDim2.fromScale(0.5, 0.5)
+AuraOuter.Size = UDim2.new(1, 110, 1, 110)
+AuraOuter.Image = "rbxassetid://1316045217"
+AuraOuter.ImageColor3 = Color3.fromRGB(60, 110, 200)
+AuraOuter.ImageTransparency = 0.92
+AuraOuter.ZIndex = Shadow2.ZIndex - 3
+
+local AuraOuterGrad = Instance.new("UIGradient")
+AuraOuterGrad.Parent = AuraOuter
+AuraOuterGrad.Rotation = 0
+AuraOuterGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.15),
+	NumberSequenceKeypoint.new(0.30, 1),
+	NumberSequenceKeypoint.new(0.50, 0.25),
+	NumberSequenceKeypoint.new(0.70, 1),
+	NumberSequenceKeypoint.new(1, 0.15)
+})
+AuraOuterGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+
+local AuraInner = Instance.new("ImageLabel")
+AuraInner.Name = "AuraInner"
+AuraInner.Parent = Shadow1
+AuraInner.BackgroundTransparency = 1
+AuraInner.AnchorPoint = Vector2.new(0.5, 0.5)
+AuraInner.Position = UDim2.fromScale(0.5, 0.5)
+AuraInner.Size = UDim2.new(1, 80, 1, 80)
+AuraInner.Image = "rbxassetid://1316045217"
+AuraInner.ImageColor3 = Color3.fromRGB(70, 120, 210)
+AuraInner.ImageTransparency = 0.93
+AuraInner.ZIndex = Shadow1.ZIndex - 2
+
+local AuraInnerGrad = Instance.new("UIGradient")
+AuraInnerGrad.Parent = AuraInner
+AuraInnerGrad.Rotation = 180
+AuraInnerGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.25),
+	NumberSequenceKeypoint.new(0.40, 1),
+	NumberSequenceKeypoint.new(0.50, 0.15),
+	NumberSequenceKeypoint.new(0.60, 1),
+	NumberSequenceKeypoint.new(1, 0.25)
+})
+AuraInnerGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+
+local ShadowShine = Instance.new("Frame")
+ShadowShine.Name = "Shine"
+ShadowShine.Parent = Shadow1
+ShadowShine.BackgroundTransparency = 1
+ShadowShine.BorderSizePixel = 0
+ShadowShine.Position = UDim2.new(-1.3, 0, 0, 0)
+ShadowShine.Size = UDim2.new(1, 0, 1, 0)
+ShadowShine.ZIndex = Shadow1.ZIndex + 6
+
+local SShineGrad = Instance.new("UIGradient")
+SShineGrad.Parent = ShadowShine
+SShineGrad.Rotation = 25
+SShineGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+SShineGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(0.46, 1),
+	NumberSequenceKeypoint.new(0.50, 0.70),
+	NumberSequenceKeypoint.new(0.54, 1),
+	NumberSequenceKeypoint.new(1, 1)
+})
+
+local SoftFill = Instance.new("Frame")
+SoftFill.Name = "SoftFill"
+SoftFill.Parent = Shadow1
+SoftFill.AnchorPoint = Vector2.new(0.5, 0.5)
+SoftFill.Position = UDim2.fromScale(0.5, 0.5)
+SoftFill.Size = UDim2.new(1, -6, 1, -6)
+SoftFill.BackgroundColor3 = Color3.fromRGB(10, 12, 20)
+SoftFill.BackgroundTransparency = 0.55
+SoftFill.BorderSizePixel = 0
+SoftFill.ZIndex = Shadow1.ZIndex - 1
+
+local SoftFillCorner = Instance.new("UICorner")
+SoftFillCorner.CornerRadius = UDim.new(0, 4)
+SoftFillCorner.Parent = SoftFill
+
+local SoftFillGrad = Instance.new("UIGradient")
+SoftFillGrad.Parent = SoftFill
+SoftFillGrad.Rotation = 35
+SoftFillGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 18, 28)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 10, 18))
+})
+
+local basePos1 = Shadow1.Position
+local basePos2 = Shadow2.Position
+
+local colors = {
+	Color3.fromRGB(70, 120, 200),
+	Color3.fromRGB(90, 150, 220),
+	Color3.fromRGB(60, 105, 190),
+	Color3.fromRGB(100, 150, 230),
+}
+
+local idx = 1
+local nxt = 2
+local speed = 0.55
+
+local function sweep()
+	ShadowShine.Position = UDim2.new(-1.3, 0, 0, 0)
+	tween(ShadowShine, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(1.3, 0, 0, 0)})
+end
+
+spawn(function()
+	while Shadow1 and Shadow1.Parent do
+		local t = 0
+		while t < 1 and Shadow1 and Shadow1.Parent do
+			t = t + speed * RunService.RenderStepped:Wait()
+			local c = UIStrokeS1.Color:Lerp(colors[nxt], t)
+			UIStrokeS1.Color = c
+			UIStrokeS2.Color = c:Lerp(Color3.fromRGB(20, 25, 60), 0.55)
+			AuraOuter.ImageColor3 = c
+			AuraInner.ImageColor3 = c:Lerp(Color3.fromRGB(255, 255, 255), 0.08)
+		end
+		idx = nxt
+		nxt = nxt + 1
+		if nxt > #colors then nxt = 1 end
+		if math.random() < 0.75 then sweep() end
+	end
+end)
+
+local shadowHovering = false
+local shadowStrength = 0
+
+Shadow1.MouseEnter:Connect(function()
+	shadowHovering = true
+	tween(UIStrokeS1, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.42, Thickness = 9})
+	tween(UIStrokeS2, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.50, Thickness = 8})
+	tween(AuraOuter, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.72})
+	tween(AuraInner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.74})
+	tween(SoftFill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.45})
+	sweep()
+end)
+
+Shadow1.MouseLeave:Connect(function()
+	shadowHovering = false
+	tween(UIStrokeS1, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.72, Thickness = 8})
+	tween(UIStrokeS2, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.72, Thickness = 7})
+	tween(AuraOuter, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.86})
+	tween(AuraInner, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.88})
+	tween(SoftFill, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.55})
+	Shadow1.Position = basePos1
+	Shadow2.Position = basePos2
+end)
+
+Shadow1.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		tween(UIStrokeS1, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 10, Transparency = 0.30})
+		tween(UIStrokeS2, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 9, Transparency = 0.38})
+		tween(AuraOuter, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.66})
+		tween(AuraInner, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = 0.68})
+		sweep()
+	end
+end)
+
+Shadow1.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if shadowHovering then
+			tween(UIStrokeS1, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Thickness = 9, Transparency = 0.42})
+			tween(UIStrokeS2, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Thickness = 8, Transparency = 0.50})
+		else
+			tween(UIStrokeS1, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 8, Transparency = 0.72})
+			tween(UIStrokeS2, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 7, Transparency = 0.72})
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+	if not (Shadow1 and Shadow1.Parent) then return end
+	local t = tick()
+	AuraOuterGrad.Rotation = (t * 55) % 360
+	AuraInnerGrad.Rotation = (180 - (t * 75)) % 360
+	SoftFillGrad.Rotation = 35 + (math.sin(t * 0.65) * 8)
+	local pulseValue = (math.sin(t * 1.35) + 1) * 0.5
+	local breatheValue = 0.08 + (pulseValue * 0.07)
+	if not shadowHovering then
+		UIStrokeS1.Transparency = 0.72 - breatheValue
+		UIStrokeS2.Transparency = 0.72 - (breatheValue * 0.9)
+		AuraOuter.ImageTransparency = 0.92 - (breatheValue * 0.9)
+		AuraInner.ImageTransparency = 0.93 - (breatheValue * 0.8)
+	end
+	local targetStr = shadowHovering and 1 or 0
+	shadowStrength = shadowStrength + (targetStr - shadowStrength) * math.clamp(dt * 9, 0, 1)
+	if shadowStrength > 0.001 then
+		local mouse = UIS:GetMouseLocation()
+		local absPos = Shadow1.AbsolutePosition
+		local absSize = Shadow1.AbsoluteSize
+		local cx = absPos.X + absSize.X * 0.5
+		local cy = absPos.Y + absSize.Y * 0.5
+		local dx = (mouse.X - cx) / 75
+		local dy = (mouse.Y - cy) / 75
+		Shadow1.Position = basePos1 + UDim2.fromOffset(dx * shadowStrength, dy * shadowStrength)
+		Shadow2.Position = basePos2 + UDim2.fromOffset(dx * 1.15 * shadowStrength, dy * 1.15 * shadowStrength)
+	end
+end)
+
+local function spawnPulse(frame, color, startScale, endScale, duration)
+	local pulse = Instance.new("Frame")
+	pulse.AnchorPoint = Vector2.new(0.5, 0.5)
+	pulse.Position = frame.Position
+	pulse.Size = frame.Size
+	pulse.BackgroundColor3 = color
+	pulse.BackgroundTransparency = 0.6
+	pulse.BorderSizePixel = 0
+	pulse.ZIndex = frame.ZIndex - 2
+	pulse.Parent = frame.Parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = pulse
+	local scale = Instance.new("UIScale")
+	scale.Scale = startScale
+	scale.Parent = pulse
+	TweenService:Create(scale, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = endScale}):Play()
+	TweenService:Create(pulse, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
+	task.delay(duration, function() pulse:Destroy() end)
+end
+
+local function spawnTrail(frame)
+	local trail = Instance.new("Frame")
+	trail.AnchorPoint = Vector2.new(0.5, 0.5)
+	trail.Position = frame.Position
+	trail.Size = frame.Size
+	trail.BackgroundColor3 = Color3.fromRGB(100, 155, 235)
+	trail.BackgroundTransparency = 0.7
+	trail.BorderSizePixel = 0
+	trail.ZIndex = frame.ZIndex - 1
+	trail.Parent = frame.Parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = trail
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1
+	scale.Parent = trail
+	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1.05}):Play()
+	TweenService:Create(trail, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
+	task.delay(0.25, function() trail:Destroy() end)
+end
+
+local function enableDragging(frame)
+	local dragging = false
+	local grabbed = false
+	local dragStart
+	local startPos
+	local targetPos
+	local velocity = Vector2.zero
+	local lastPointerPos
+	local trailTimer = 0
+	local smoothness = 18
+	local inertia = 0.88
+	local velocityScale = 0.055
+	local maxTilt = 4
+	local trailInterval = 0.04
+	local scale = frame:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Scale = 1
+		scale.Parent = frame
+	end
+	local function beginDrag(pos)
+		dragging = true
+		grabbed = true
+		dragStart = pos
+		startPos = frame.Position
+		targetPos = startPos
+		velocity = Vector2.zero
+		lastPointerPos = pos
+		trailTimer = 0
+		spawnPulse(frame, Color3.fromRGB(100, 155, 235), 0.9, 1.1, 0.25)
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1.03}):Play()
+	end
+	local function endDrag()
+		if not grabbed then return end
+		grabbed = false
+		dragging = false
+		dragStart = nil
+		startPos = nil
+		lastPointerPos = nil
+		spawnPulse(frame, Color3.fromRGB(100, 155, 235), 1, 1.15, 0.22)
+		TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Rotation = 0}):Play()
+	end
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			beginDrag(input.Position)
+			input.Changed:Once(function()
+				if input.UserInputState == Enum.UserInputState.End then endDrag() end
+			end)
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if not dragStart or not startPos then return end
+		local pos = input.Position
+		local delta = pos - dragStart
+		targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		if lastPointerPos then velocity = velocity:Lerp(pos - lastPointerPos, 0.35) end
+		lastPointerPos = pos
+	end)
+	frame.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			endDrag()
+		end
+	end)
+	RunService.RenderStepped:Connect(function(dt)
+		if not targetPos then return end
+		frame.Position = frame.Position:Lerp(targetPos, math.clamp(dt * smoothness, 0, 1))
+		if not dragging then
+			velocity = velocity * math.pow(inertia, dt * 60)
+			if velocity.Magnitude < 0.05 then
+				targetPos = frame.Position
+				velocity = Vector2.zero
+			else
+				local offset = velocity * velocityScale
+				targetPos = frame.Position + UDim2.fromOffset(offset.X, offset.Y)
+			end
+		end
+		local tilt = math.clamp(velocity.X * 0.08, -maxTilt, maxTilt)
+		frame.Rotation = frame.Rotation + (tilt - frame.Rotation) * math.clamp(dt * 12, 0, 1)
+		if dragging then
+			trailTimer = trailTimer + dt
+			if trailTimer >= trailInterval then
+				trailTimer = 0
+				spawnTrail(frame)
+			end
+		end
+	end)
+end
+
+enableDragging(Main)
+
+local ToggleRef
+local minimizing = false
+local expanding = false
+
+local Accent = {
+	Color3.fromRGB(70, 120, 210),
+	Color3.fromRGB(90, 150, 230),
+	Color3.fromRGB(60, 110, 200)
+}
+
+local function addBlur(amount)
+	local b = Lighting:FindFirstChild("PrestineBlur")
+	if not b then
+		b = mk("BlurEffect", {Name="PrestineBlur", Parent=Lighting, Size=0})
+	end
+	tw(b, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size=amount})
+	return b
+end
+
+local function removeBlur()
+	local b = Lighting:FindFirstChild("PrestineBlur")
+	if not b then return end
+	tw(b, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size=0})
+	task.delay(0.25, function()
+		if b and b.Parent then b:Destroy() end
+	end)
+end
+
+local function ripple(p,pos, col)
+	col = col or Accent[2]
+	local r=mk("Frame",{
+		Parent=p,
+		AnchorPoint=Vector2.new(0.5,0.5),
+		Position=pos,
+		Size=UDim2.fromOffset(8,8),
+		BackgroundColor3=col,
+		BackgroundTransparency=0.55,
+		BorderSizePixel=0,
+		ZIndex=300
+	})
+	mk("UICorner",{Parent=r,CornerRadius=UDim.new(1,0)})
+	local s=mk("UIStroke",{Parent=r,ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Thickness=2,Color=col,Transparency=0.25})
+
+	tw(r,TweenInfo.new(0.45,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{
+		Size=UDim2.fromOffset(120,120),
+		BackgroundTransparency=1
+	})
+	tw(s,TweenInfo.new(0.45,Enum.EasingStyle.Quad),{Transparency=1})
+
+	task.delay(0.5,function() if r then r:Destroy() end end)
+end
+
+local function sparks(p,pos, col)
+	col = col or Accent[2]
+	for i=1,14 do
+		local d=mk("Frame",{
+			Parent=p,
+			AnchorPoint=Vector2.new(0.5,0.5),
+			Position=pos,
+			Size=UDim2.fromOffset(4,4),
+			BackgroundColor3=col,
+			BorderSizePixel=0,
+			ZIndex=320
+		})
+		mk("UICorner",{Parent=d,CornerRadius=UDim.new(1,0)})
+
+		local a=(math.pi*2)*(i/14)
+		local r=16+math.random(0,10)
+		local target = pos + UDim2.new(0, math.cos(a)*r, 0, math.sin(a)*r)
+
+		tw(d,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{
+			Position=target,
+			BackgroundTransparency=1,
+			Size=UDim2.fromOffset(10,10)
+		})
+
+		task.delay(0.32,function() if d then d:Destroy() end end)
+	end
+end
+
+local function burstRing(p, pos, col)
+	col = col or Accent[2]
+	local ring = mk("Frame", {
+		Parent = p,
+		AnchorPoint = Vector2.new(0.5,0.5),
+		Position = pos,
+		Size = UDim2.fromOffset(10,10),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 310
+	})
+	mk("UICorner",{Parent=ring,CornerRadius=UDim.new(1,0)})
+	local st = mk("UIStroke", {Parent=ring, Thickness=2, Color=col, Transparency=0.15})
+
+	tw(ring, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size=UDim2.fromOffset(140,140)})
+	tw(st, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency=1})
+
+	task.delay(0.42, function()
+		if ring then ring:Destroy() end
+	end)
+end
+
+local function expandUI()
+	if expanding or Main.Visible then return end
+	expanding = true
+	if ToggleRef then ToggleRef:Destroy() ToggleRef=nil end
+
+	addBlur(10)
+
+	local pos = Main.Position
+	local size = Main.Size
+
+	local gui = mk("ScreenGui", {Parent=game:GetService("CoreGui"), IgnoreGuiInset=true, ResetOnSpawn=false})
+	local f = mk("Frame",{
+		Parent=gui,
+		AnchorPoint=Vector2.new(0.5,0.5),
+		Position=pos + UDim2.fromOffset(0, 18),
+		Size=size,
+		BackgroundColor3=Color3.fromRGB(16,16,20),
+		BackgroundTransparency=1,
+		BorderSizePixel=0
+	})
+	mk("UICorner",{Parent=f,CornerRadius=UDim.new(0,16)})
+
+	local sc = mk("UIScale",{Parent=f,Scale=0.86})
+	local st = mk("UIStroke",{Parent=f,Thickness=2,Color=Accent[2],Transparency=1})
+
+	local glow = mk("ImageLabel",{
+		Parent=f,
+		BackgroundTransparency=1,
+		AnchorPoint=Vector2.new(0.5,0.5),
+		Position=UDim2.fromScale(0.5,0.5),
+		Size=UDim2.new(1,120,1,120),
+		Image="rbxassetid://1316045217",
+		ImageColor3=Accent[2],
+		ImageTransparency=0.92,
+		ZIndex=1
+	})
+
+	tw(f, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		BackgroundTransparency=0.06,
+		Position=pos
+	})
+	tw(sc, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1})
+	tw(st, TweenInfo.new(0.22, Enum.EasingStyle.Quad), {Transparency=0.32})
+	tw(glow, TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {ImageTransparency=0.86})
+
+	task.delay(0.12, function()
+		local center = UDim2.fromScale(0.5,0.5)
+		ripple(f, center, Accent[2])
+		burstRing(f, center, Accent[1])
+		sparks(f, center, Accent[2])
+	end)
+
+	task.delay(0.52, function()
+		tw(sc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale=1.02})
+		task.delay(0.18, function()
+			tw(sc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale=1})
+		end)
+
+		tw(f, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency=1})
+		tw(st, TweenInfo.new(0.2), {Transparency=1})
+		tw(glow, TweenInfo.new(0.2), {ImageTransparency=1})
+
+		task.delay(0.22, function()
+			Main.Visible = true
+			Main.Position = pos
+			gui:Destroy()
+			removeBlur()
+			expanding = false
+		end)
+	end)
+end
+
+local function createToggleButton(framePos)
+	if ToggleRef then ToggleRef:Destroy() end
+
+	local b = mk("TextButton", {
+		Parent = PrestineUI,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = framePos,
+		Size = UDim2.fromOffset(190, 56),
+		BackgroundColor3 = Color3.fromRGB(16, 18, 28),
+		BackgroundTransparency = 0.06,
+		BorderSizePixel = 0,
+		Text = "",
+		AutoButtonColor = false,
+		Active = true,
+		ZIndex = 200,
+	})
+
+	ToggleRef = b
+	mk("UICorner", { Parent = b, CornerRadius = UDim.new(0, 4) })
+
+	local sc = mk("UIScale", { Parent = b, Scale = 1 })
+	local st = mk("UIStroke", { Parent = b, Thickness = 1.8, Color = Accent[1], Transparency = 0.65 })
+
+	local gr = mk("UIGradient", {
+		Parent = b,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 18, 28)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 14, 22)),
+		}),
+	})
+
+	local glow = mk("ImageLabel", {
+		Parent = b,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 90, 1, 90),
+		Image = "rbxassetid://1316045217",
+		ImageColor3 = Accent[2],
+		ImageTransparency = 0.9,
+		ZIndex = 1,
+	})
+
+	local shine = mk("Frame", {
+		Parent = b,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.92,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, 40, 1, 0),
+		Position = UDim2.new(0, -60, 0, 0),
+		Rotation = 20,
+		ZIndex = 210,
+	})
+
+	mk("UIGradient", {
+		Parent = shine,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.2),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+	})
+
+	local dot = mk("Frame", {
+		Parent = b,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 16, 0.5, 0),
+		Size = UDim2.fromOffset(12, 12),
+		BackgroundColor3 = Accent[2],
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		ZIndex = 220,
+	})
+
+	mk("UICorner", { Parent = dot, CornerRadius = UDim.new(1, 0) })
+	mk("UIStroke", { Parent = dot, Thickness = 1.5, Color = Accent[2], Transparency = 0.35 })
+
+	mk("UIPadding", {
+		Parent = b,
+		PaddingLeft = UDim.new(0, 42),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+	})
+
+	mk("TextLabel", {
+		Parent = b,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.new(0, 0, 0, 0),
+		Font = Enum.Font.GothamSemibold,
+		Text = "SHOW UI",
+		TextSize = 16,
+		TextColor3 = Color3.fromRGB(235, 240, 255),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 230,
+	})
+
+	mk("TextLabel", {
+		Parent = b,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 18),
+		Position = UDim2.new(0, 0, 0, 22),
+		Font = Enum.Font.Gotham,
+		Text = "click to restore",
+		TextSize = 12,
+		TextColor3 = Color3.fromRGB(150, 165, 180),
+		TextTransparency = 0.15,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 230,
+	})
+
+	local dragging = false
+	local moved = 0
+	local dragStart
+	local startPos
+
+	local function hoverOn()
+		tw(sc, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.06 })
+		tw(st, TweenInfo.new(0.14), { Transparency = 0.28 })
+		tw(glow, TweenInfo.new(0.14), { ImageTransparency = 0.82 })
+	end
+
+	local function hoverOff()
+		if not dragging then
+			tw(sc, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
+		end
+		tw(st, TweenInfo.new(0.14), { Transparency = 0.65 })
+		tw(glow, TweenInfo.new(0.14), { ImageTransparency = 0.9 })
+	end
+
+	b.MouseEnter:Connect(hoverOn)
+	b.MouseLeave:Connect(hoverOff)
+
+	b.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			moved = 0
+			dragStart = i.Position
+			startPos = b.Position
+
+			tw(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.97 })
+
+			local conn
+			conn = i.Changed:Connect(function()
+				if i.UserInputState == Enum.UserInputState.End then
+					if conn then
+						conn:Disconnect()
+					end
+					dragging = false
+					if b:IsDescendantOf(game) then
+						tw(sc, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.06 })
+					end
+				end
+			end)
+		end
+	end)
+
+	b.InputChanged:Connect(function(i)
+		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+			local d = i.Position - dragStart
+			moved = math.max(moved, math.abs(d.X) + math.abs(d.Y))
+			b.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+
+	b.Activated:Connect(function()
+		if dragging and moved > 6 then return end
+
+		local p = UDim2.fromScale(0.5, 0.5)
+		ripple(b, p, Accent[2])
+		burstRing(b, p, Accent[1])
+		sparks(b, p, Accent[2])
+
+		shine.Position = UDim2.new(0, -60, 0, 0)
+		tw(shine, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Position = UDim2.new(1, 80, 0, 0),
+		})
+
+		expandUI()
+	end)
+
+	task.spawn(function()
+		local i, n = 1, 2
+		local breath = 0
+
+		while b.Parent do
+			breath = breath + RunService.RenderStepped:Wait()
+			glow.ImageTransparency = 0.86 + (math.sin(breath * 2.2) * 0.06)
+			gr.Rotation = (gr.Rotation + 0.35) % 360
+
+			local a = Accent[i]
+			local c = Accent[n]
+			local t = 0
+
+			while t < 1 and b.Parent do
+				t = t + (0.9 * RunService.RenderStepped:Wait())
+				local col = a:Lerp(c, math.clamp(t, 0, 1))
+				st.Color = col
+				dot.BackgroundColor3 = col
+				glow.ImageColor3 = col
+			end
+
+			i = n
+			n = (n % #Accent) + 1
+		end
+	end)
+
+	return b
+end
+
+local function minimizeUI()
+	if minimizing or (Main == nil) or (Main.Visible == false) then return end
+	minimizing = true
+
+	addBlur(12)
+
+	local coreGui = game:GetService("CoreGui")
+	local gui = mk("ScreenGui", {
+		Parent = coreGui,
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+	})
+
+	local f = mk("Frame", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = Main.Position,
+		Size = Main.Size,
+		BackgroundColor3 = Color3.fromRGB(16, 18, 28),
+		BackgroundTransparency = 0.06,
+		BorderSizePixel = 0,
+	})
+
+	mk("UICorner", {
+		Parent = f,
+		CornerRadius = UDim.new(0, 4),
+	})
+
+	local sc = mk("UIScale", {
+		Parent = f,
+		Scale = 1,
+	})
+
+	local st = mk("UIStroke", {
+		Parent = f,
+		Thickness = 1,
+		Color = Accent[2],
+		Transparency = 0.5,
+	})
+
+	local glow = mk("ImageLabel", {
+		Parent = f,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 120, 1, 120),
+		Image = "rbxassetid://1316045217",
+		ImageColor3 = Accent[2],
+		ImageTransparency = 0.9,
+		ZIndex = 1,
+	})
+
+	Main.Visible = false
+
+	tw(sc, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.94 })
+	tw(glow, TweenInfo.new(0.14, Enum.EasingStyle.Quad), { ImageTransparency = 0.82 })
+
+	task.delay(0.12, function()
+		tw(sc, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { Scale = 0.2 })
+		tw(f, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0.06, 0),
+		})
+		tw(st, TweenInfo.new(0.26), { Transparency = 1 })
+		tw(glow, TweenInfo.new(0.26), { ImageTransparency = 1 })
+
+		task.delay(0.33, function()
+			createToggleButton(f.Position)
+			gui:Destroy()
+			removeBlur()
+			minimizing = false
+		end)
+	end)
+end
+
+MinimizeButton.MouseButton1Click:Connect(minimizeUI)
+
+UIS.InputBegan:Connect(function(i,gp)
+	if gp then return end
+	if i.UserInputType~=Enum.UserInputType.Keyboard then return end
+	if i.KeyCode~=PrestineLib.GUIHotkey then return end
+	if UIS:GetFocusedTextBox() then return end
+	if minimizing or expanding then return end
+
+	if Main.Visible then
+		minimizeUI()
+	else
+		expandUI()
+	end
+end)
+
+function PrestineLib:Confirm(params)
+	local title = params.Title or "Confirm"
+	local content = params.Content or "Are you sure?"
+	local confirmText = params.ConfirmText or "Confirm"
+	local cancelText = params.CancelText or "Cancel"
+	local onConfirm = params.OnConfirm or function() end
+	local onCancel = params.OnCancel or function() end
+
+	local keybinds = (params.Keybinds ~= false)
+	local useBlur = (params.Blur ~= false)
+
+	local old = player:WaitForChild("PlayerGui"):FindFirstChild("PrestineConfirm")
+	if old then old:Destroy() end
+
+	local ConfirmSG = Instance.new("ScreenGui")
+	ConfirmSG.Name = "PrestineConfirm"
+	ConfirmSG.IgnoreGuiInset = true
+	ConfirmSG.ResetOnSpawn = false
+	ConfirmSG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	ConfirmSG.Parent = game:GetService("CoreGui")
+
+	local blur
+	if useBlur then
+		blur = Instance.new("BlurEffect")
+		blur.Name = "PrestineConfirmBlur"
+		blur.Size = 0
+		blur.Parent = Lighting
+	end
+
+	local Overlay = Instance.new("TextButton")
+	Overlay.Name = "Overlay"
+	Overlay.Parent = ConfirmSG
+	Overlay.Size = UDim2.fromScale(1, 1)
+	Overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	Overlay.BackgroundTransparency = 1
+	Overlay.BorderSizePixel = 0
+	Overlay.Text = ""
+	Overlay.AutoButtonColor = false
+
+	local Modal = Instance.new("Frame")
+	Modal.Name = "Modal"
+	Modal.Parent = ConfirmSG
+	Modal.AnchorPoint = Vector2.new(0.5, 0.5)
+	Modal.Position = UDim2.fromScale(0.5, 0.5)
+	Modal.Size = UDim2.new(0, 330, 0, 150)
+	Modal.BackgroundColor3 = Color3.fromRGB(16, 18, 28)
+	Modal.BackgroundTransparency = 0.25
+	Modal.BorderSizePixel = 0
+
+	local ModalCorner = Instance.new("UICorner")
+	ModalCorner.CornerRadius = UDim.new(0, 4)
+	ModalCorner.Parent = Modal
+
+	local ModalStroke = Instance.new("UIStroke")
+	ModalStroke.Parent = Modal
+	ModalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	ModalStroke.Color = Color3.fromRGB(180, 195, 225)
+	ModalStroke.Thickness = 1
+	ModalStroke.Transparency = 0.75
+
+	local ModalScale = Instance.new("UIScale")
+	ModalScale.Parent = Modal
+	ModalScale.Scale = 0.92
+
+	local Glow = Instance.new("Frame")
+	Glow.Name = "BlueGlow"
+	Glow.Parent = Modal
+	Glow.BackgroundColor3 = Color3.fromRGB(80, 130, 210)
+	Glow.BackgroundTransparency = 1
+	Glow.BorderSizePixel = 0
+	Glow.AnchorPoint = Vector2.new(0.5, 0.5)
+	Glow.Position = UDim2.fromScale(0.5, 0.5)
+	Glow.Size = UDim2.new(1, 22, 1, 22)
+	Glow.ZIndex = Modal.ZIndex - 1
+
+	local GlowCorner = Instance.new("UICorner")
+	GlowCorner.CornerRadius = UDim.new(0, 6)
+	GlowCorner.Parent = Glow
+
+	local GlowStroke = Instance.new("UIStroke")
+	GlowStroke.Parent = Glow
+	GlowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	GlowStroke.Color = Color3.fromRGB(100, 150, 220)
+	GlowStroke.Thickness = 1
+	GlowStroke.Transparency = 1
+
+	local Title = Instance.new("TextLabel")
+	Title.Parent = Modal
+	Title.BackgroundTransparency = 1
+	Title.Position = UDim2.new(0, 14, 0, 10)
+	Title.Size = UDim2.new(1, -28, 0, 24)
+	Title.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+	Title.Text = title
+	Title.TextColor3 = Color3.fromRGB(230, 230, 230)
+	Title.TextSize = 18
+	Title.TextXAlignment = Enum.TextXAlignment.Left
+	Title.TextTransparency = 1
+
+	local Body = Instance.new("TextLabel")
+	Body.Parent = Modal
+	Body.BackgroundTransparency = 1
+	Body.Position = UDim2.new(0, 14, 0, 40)
+	Body.Size = UDim2.new(1, -28, 0, 52)
+	Body.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal)
+	Body.Text = content
+	Body.TextColor3 = Color3.fromRGB(170, 170, 170)
+	Body.TextSize = 14
+	Body.TextXAlignment = Enum.TextXAlignment.Left
+	Body.TextYAlignment = Enum.TextYAlignment.Top
+	Body.TextWrapped = true
+	Body.TextTransparency = 1
+
+	local Buttons = Instance.new("Frame")
+	Buttons.Parent = Modal
+	Buttons.BackgroundTransparency = 1
+	Buttons.Position = UDim2.new(0, 14, 1, -46)
+	Buttons.Size = UDim2.new(1, -28, 0, 34)
+
+	local Layout = Instance.new("UIListLayout")
+	Layout.Parent = Buttons
+	Layout.FillDirection = Enum.FillDirection.Horizontal
+	Layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	Layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	Layout.Padding = UDim.new(0, 8)
+
+	local function makeBtn(text, accent)
+		local b = Instance.new("TextButton")
+		b.Parent = Buttons
+		b.Size = UDim2.new(0, 110, 0, 34)
+		b.BackgroundColor3 = accent and Color3.fromRGB(45, 75, 160) or Color3.fromRGB(22, 24, 34)
+		b.BackgroundTransparency = 0.2
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = false
+		b.Text = text
+		b.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+		b.TextColor3 = Color3.fromRGB(230, 230, 230)
+		b.TextSize = 14
+
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 4)
+		c.Parent = b
+
+		local s = Instance.new("UIStroke")
+		s.Parent = b
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Color = accent and Color3.fromRGB(140, 170, 230) or Color3.fromRGB(160, 170, 190)
+		s.Thickness = 1
+		s.Transparency = accent and 0.4 or 0.65
+
+		local sc = Instance.new("UIScale")
+		sc.Parent = b
+		sc.Scale = 1
+
+		b.MouseEnter:Connect(function()
+			TweenService:Create(sc, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1.03}):Play()
+			TweenService:Create(s, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = accent and 0.25 or 0.55}):Play()
+		end)
+
+		b.MouseLeave:Connect(function()
+			TweenService:Create(sc, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+			TweenService:Create(s, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = accent and 0.4 or 0.65}):Play()
+		end)
+
+		return b
+	end
+
+	local CancelBtn = makeBtn(cancelText, false)
+	local ConfirmBtn = makeBtn(confirmText, true)
+
+	local closing = false
+	local kbConn
+
+	local function cleanup()
+		if kbConn then kbConn:Disconnect() kbConn = nil end
+		if blur then blur:Destroy() blur = nil end
+		if ConfirmSG then ConfirmSG:Destroy() end
+	end
+
+	local function close(result)
+		if closing then return end
+		closing = true
+
+		TweenService:Create(Overlay, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(ModalScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 0.9}):Play()
+		TweenService:Create(Modal, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(ModalStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Transparency = 1}):Play()
+		TweenService:Create(GlowStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Transparency = 1}):Play()
+		TweenService:Create(Title, TweenInfo.new(0.12), {TextTransparency = 1}):Play()
+		TweenService:Create(Body, TweenInfo.new(0.12), {TextTransparency = 1}):Play()
+
+		if useBlur and blur then
+			TweenService:Create(blur, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = 0}):Play()
+		end
+
+		task.delay(0.18, function()
+			if result then onConfirm() else onCancel() end
+			cleanup()
+		end)
+	end
+
+	Overlay.MouseButton1Click:Connect(function()
+		close(false)
+	end)
+
+	CancelBtn.MouseButton1Click:Connect(function()
+		close(false)
+	end)
+
+	ConfirmBtn.MouseButton1Click:Connect(function()
+		close(true)
+	end)
+
+	if keybinds then
+		kbConn = UIS.InputBegan:Connect(function(input, gp)
+			if gp or closing then return end
+			if input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter then
+				close(true)
+			elseif input.KeyCode == Enum.KeyCode.Escape then
+				close(false)
+			end
+		end)
+	end
+
+	TweenService:Create(Overlay, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.45}):Play()
+	TweenService:Create(ModalScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	TweenService:Create(ModalStroke, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.45}):Play()
+	TweenService:Create(GlowStroke, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.7}):Play()
+	TweenService:Create(Title, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+	TweenService:Create(Body, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+
+	if useBlur and blur then
+		TweenService:Create(blur, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 14}):Play()
+	end
+
+	return {
+		Close = function()
+			close(false)
+		end
+	}
+end
+
+function PrestineLib:ExitFX(params)
+	params = params or {}
+	local root = params.Root or PrestineUI
+	if not root or not root.Parent then return end
+
+	local ExitSG = Instance.new("ScreenGui")
+	ExitSG.Name = params.ScreenGuiName or "ExitSG"
+	ExitSG.IgnoreGuiInset = true
+	ExitSG.ResetOnSpawn = false
+	ExitSG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	ExitSG.Parent = game:GetService("CoreGui")
+
+	local overlay = Instance.new("Frame")
+	overlay.Name = "ExitOverlay"
+	overlay.BackgroundColor3 = params.OverlayColor or Color3.fromRGB(0, 0, 0)
+	overlay.BackgroundTransparency = 1
+	overlay.BorderSizePixel = 0
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.Position = UDim2.fromScale(0.5, 0.5)
+	overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+	overlay.ZIndex = 999999
+	overlay.Parent = ExitSG
+
+	local function fadeAll(obj, target, duration)
+		local ti = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("Frame") then
+				tw(d, ti, { BackgroundTransparency = target })
+			elseif d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+				tw(d, ti, { TextTransparency = target })
+				if d:IsA("TextBox") then
+					tw(d, ti, { PlaceholderColor3 = Color3.fromRGB(60, 60, 60) })
+				end
+			elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+				tw(d, ti, { ImageTransparency = target })
+			elseif d:IsA("UIStroke") then
+				tw(d, ti, { Transparency = target })
+			end
+		end
+	end
+
+	local scale = root:FindFirstChild("ExitScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Name = "ExitScale"
+		scale.Scale = 1
+		scale.Parent = root
+	end
+
+	local overlayDark = params.OverlayDarkness or 0.65
+	local tIn = params.InTime or 0.18
+	local delayMid = params.Delay or 0.16
+	local tOut = params.OutTime or 0.22
+
+	tw(overlay, TweenInfo.new(tIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 - overlayDark })
+	tw(scale, TweenInfo.new(tIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = params.ShrinkScale or 0.98 })
+
+	task.delay(delayMid, function()
+		tw(scale, TweenInfo.new(tOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = params.PopScale or 1.06 })
+		fadeAll(root, 1, tOut)
+
+		local t = tw(overlay, TweenInfo.new(tOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { BackgroundTransparency = 1 })
+		t.Completed:Once(function()
+			if params.OnComplete then
+				pcall(params.OnComplete)
+			end
+			if ExitSG then ExitSG:Destroy() end
+			if params.DestroyRoot ~= false and root then root:Destroy() end
+		end)
+	end)
+end
+
+ExitButton.MouseButton1Click:Connect(function()
+	PrestineLib:Confirm({
+		Title = "Confirm Exit",
+		Content = "Are you sure you want to close the UI?",
+		Keybinds = true,
+		Blur = true,
+		OnConfirm = function()
+			PrestineLib:ExitFX({
+				Root = PrestineUI
+			})
+		end,
+		OnCancel = function()
+		end
+	})
+end)
