@@ -4,8 +4,13 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
+local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
 PrestineManager.Config = {
 	TravelMethod = "Teleport",
@@ -47,34 +52,22 @@ PrestineManager._original = {
 PrestineManager._token = 0
 PrestineManager._queue = {}
 PrestineManager._activeTween = nil
-PrestineManager._uiConn = nil
-PrestineManager._charConn = nil
-PrestineManager._deathConn = nil
-PrestineManager._fpsConn = nil
-
-PrestineManager._statusParagraph = nil
-PrestineManager._serverStatusParagraph = nil
-PrestineManager._perfParagraph = nil
-PrestineManager._statusSupportsUpdate = nil
-PrestineManager._lastStatusText = ""
-PrestineManager._lastStatusWarned = false
-
-PrestineManager._lastServerUpdate = 0
-PrestineManager._lastPerfUpdate = 0
 PrestineManager._fps = 0
-PrestineManager._fpsFrames = 0
-PrestineManager._fpsLast = os.clock()
-
-PrestineManager._prevCameraSubject = nil
 PrestineManager._serverJoinMode = "Lowest"
 PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
-
 PrestineManager._antiAfk = false
-PrestineManager._antiAfkConn = nil
+PrestineManager._infJump = false
+
+local SERVER_START = os.clock()
 
 local function getCharacter()
 	return player.Character or player.CharacterAdded:Wait()
+end
+
+local function getHumanoid()
+	local c = getCharacter()
+	return c:WaitForChild("Humanoid")
 end
 
 local function getHumanoidRoot()
@@ -82,9 +75,8 @@ local function getHumanoidRoot()
 	return c:WaitForChild("Humanoid"), c:WaitForChild("HumanoidRootPart")
 end
 
-local function getHumanoid()
-	local char = player.Character or player.CharacterAdded:Wait()
-	return char:WaitForChild("Humanoid")
+local function getCamera()
+	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
 end
 
 local function toCFrame(target)
@@ -101,21 +93,263 @@ local function isValidMethod(m)
 	return m == "Teleport" or m == "Tween" or m == "Walking"
 end
 
-local function setClipboard(text)
-	if setclipboard then
-		local ok = pcall(function() setclipboard(text) end)
-		return ok
-	elseif toclipboard then
-		local ok = pcall(function() toclipboard(text) end)
-		return ok
-	end
-	return false
-end
-
 local function clampNumber(v, lo, hi)
 	local n = tonumber(v)
 	if not n then return nil end
 	return math.clamp(n, lo, hi)
+end
+
+local function setClipboard(text)
+	if setclipboard then
+		return pcall(function() setclipboard(text) end)
+	elseif toclipboard then
+		return pcall(function() toclipboard(text) end)
+	end
+	return false
+end
+
+local function formatUptime(seconds)
+	seconds = math.floor(seconds)
+	local s = seconds % 60
+	local m = math.floor(seconds / 60) % 60
+	local h = math.floor(seconds / 3600) % 24
+	local d = math.floor(seconds / 86400) % 7
+	local w = math.floor(seconds / 604800)
+
+	local parts = {}
+	if w > 0 then table.insert(parts, w .. "w") end
+	if d > 0 then table.insert(parts, d .. "d") end
+	if h > 0 then table.insert(parts, h .. "h") end
+	if m > 0 then table.insert(parts, m .. "m") end
+	table.insert(parts, s .. "s")
+
+	return table.concat(parts, " ")
+end
+
+local function getServerInfoText()
+	local serverType = "Public"
+	if game.PrivateServerId ~= "" then
+		serverType = game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved"
+	end
+
+	return "Game Name: " .. game.Name ..
+		"\nPlace ID: " .. game.PlaceId ..
+		"\nGame ID: " .. game.GameId ..
+		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
+		"\nServer Type: " .. serverType ..
+		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
+		"\nUptime: " .. formatUptime(os.clock() - SERVER_START) ..
+		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
+		"\nGravity: " .. tostring(workspace.Gravity)
+end
+
+local function getPerformanceText(mgr)
+	return "FPS: " .. tostring(mgr._fps) ..
+		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
+end
+
+local function getPlayerNames()
+	local list = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			table.insert(list, plr.Name)
+		end
+	end
+	return list
+end
+
+local function setCameraToPlayer(plr)
+	if not plr then return end
+	local char = plr.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		getCamera().CameraSubject = hum
+	end
+end
+
+local function resetCamera()
+	local char = player.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		getCamera().CameraSubject = hum
+	end
+end
+
+local function toggleTextures(state)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("Decal") or inst:IsA("Texture") then
+			if state then
+				if inst:GetAttribute("Prestine_T") == nil then
+					inst:SetAttribute("Prestine_T", inst.Transparency)
+				end
+				inst.Transparency = 1
+			else
+				local t = inst:GetAttribute("Prestine_T")
+				if t ~= nil then
+					inst.Transparency = t
+					inst:SetAttribute("Prestine_T", nil)
+				end
+			end
+		end
+	end
+end
+
+local function toggleEffects(state)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") then
+			inst.Enabled = not state
+		end
+	end
+end
+
+local function toggleLighting(state)
+	local o = PrestineManager._original.Lighting
+	if state then
+		if not o._saved then
+			o._saved = true
+			o.Brightness = Lighting.Brightness
+			o.GlobalShadows = Lighting.GlobalShadows
+			o.Ambient = Lighting.Ambient
+			o.OutdoorAmbient = Lighting.OutdoorAmbient
+			o.Post = {}
+			for _, fx in ipairs(Lighting:GetChildren()) do
+				if fx:IsA("PostEffect") then
+					o.Post[fx] = fx.Enabled
+					fx.Enabled = false
+				end
+			end
+		end
+		Lighting.Brightness = 1
+		Lighting.GlobalShadows = false
+		Lighting.Ambient = Color3.new(1,1,1)
+		Lighting.OutdoorAmbient = Color3.new(1,1,1)
+	else
+		if o._saved then
+			Lighting.Brightness = o.Brightness
+			Lighting.GlobalShadows = o.GlobalShadows
+			Lighting.Ambient = o.Ambient
+			Lighting.OutdoorAmbient = o.OutdoorAmbient
+			for fx, enabled in pairs(o.Post or {}) do
+				if fx then fx.Enabled = enabled end
+			end
+		end
+	end
+end
+
+local function toggleFog(state)
+	if state then
+		if not PrestineManager._original.Lighting._fogSaved then
+			PrestineManager._original.Lighting.FogEnd = Lighting.FogEnd
+			PrestineManager._original.Lighting.FogStart = Lighting.FogStart
+			PrestineManager._original.Lighting._fogSaved = true
+		end
+		Lighting.FogEnd = 1e6
+		Lighting.FogStart = 1e6
+	else
+		local o = PrestineManager._original.Lighting
+		if o._fogSaved then
+			Lighting.FogEnd = o.FogEnd
+			Lighting.FogStart = o.FogStart
+		end
+	end
+end
+
+local function toggleShadows(state)
+	local o = PrestineManager._original.Lighting
+	if state then
+		if o._shadows == nil then
+			o._shadows = Lighting.GlobalShadows
+		end
+		Lighting.GlobalShadows = false
+	else
+		if o._shadows ~= nil then
+			Lighting.GlobalShadows = o._shadows
+		end
+	end
+end
+
+local function toggleRenderDistance(state)
+	if state then
+		PrestineManager._original.Streaming.Target = workspace.StreamingTargetRadius
+		PrestineManager._original.Streaming.Min = workspace.StreamingMinRadius
+		workspace.StreamingTargetRadius = 64
+		workspace.StreamingMinRadius = 64
+	else
+		if PrestineManager._original.Streaming.Target then
+			workspace.StreamingTargetRadius = PrestineManager._original.Streaming.Target
+			workspace.StreamingMinRadius = PrestineManager._original.Streaming.Min
+		end
+	end
+end
+
+local function toggleWater(state)
+	if not Terrain then return end
+	if state then
+		PrestineManager._original.Water = {
+			WaveSize = Terrain.WaterWaveSize,
+			WaveSpeed = Terrain.WaterWaveSpeed,
+			Reflectance = Terrain.WaterReflectance,
+			Transparency = Terrain.WaterTransparency
+		}
+		Terrain.WaterWaveSize = 0
+		Terrain.WaterWaveSpeed = 0
+		Terrain.WaterReflectance = 0
+		Terrain.WaterTransparency = 1
+	else
+		local o = PrestineManager._original.Water
+		if o then
+			Terrain.WaterWaveSize = o.WaveSize or Terrain.WaterWaveSize
+			Terrain.WaterWaveSpeed = o.WaveSpeed or Terrain.WaterWaveSpeed
+			Terrain.WaterReflectance = o.Reflectance or Terrain.WaterReflectance
+			Terrain.WaterTransparency = o.Transparency or Terrain.WaterTransparency
+		end
+	end
+end
+
+local function applyLowGraphics(state)
+	toggleTextures(state)
+	toggleEffects(state)
+	toggleLighting(state)
+	toggleFog(state)
+	toggleShadows(state)
+	toggleRenderDistance(state)
+	toggleWater(state)
+end
+
+local function getServerForMode(mode)
+	local placeId = game.PlaceId
+	local cursor = ""
+	local bestServer = nil
+
+	for _ = 1, 5 do
+		local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100" .. (cursor ~= "" and "&cursor=" .. cursor or "")
+		local ok, res = pcall(function() return game:HttpGet(url) end)
+		if not ok then return nil end
+
+		local data = HttpService:JSONDecode(res)
+		for _, s in ipairs(data.data) do
+			if s.playing < s.maxPlayers then
+				if mode == "Lowest" then
+					if not bestServer or s.playing < bestServer.playing then
+						bestServer = s
+					end
+				elseif mode == "Max" then
+					if not bestServer or s.playing > bestServer.playing then
+						bestServer = s
+					end
+				elseif mode == "Full" then
+					if s.playing >= s.maxPlayers - 1 then
+						return s
+					end
+				end
+			end
+		end
+		if not data.nextPageCursor then break end
+		cursor = data.nextPageCursor
+	end
+	return bestServer
 end
 
 function PrestineManager:ApplyProfile(name)
@@ -186,10 +420,8 @@ function PrestineManager:_travel(cf, token)
 		self._activeTween = tween
 
 		local completed = false
-		local conn
-		conn = tween.Completed:Connect(function()
+		local conn = tween.Completed:Connect(function()
 			completed = true
-			if conn then conn:Disconnect() end
 		end)
 
 		local lastPos = hrp.Position
@@ -214,6 +446,7 @@ function PrestineManager:_travel(cf, token)
 			task.wait(0.05)
 		end
 
+		if conn then conn:Disconnect() end
 		self._activeTween = nil
 		return
 	end
@@ -231,63 +464,52 @@ function PrestineManager:_travel(cf, token)
 			end
 
 			local reached = false
-			local moveConn
-			moveConn = hum.MoveToFinished:Connect(function(ok)
+			local moveConn = hum.MoveToFinished:Connect(function(ok)
 				reached = ok
-				if moveConn then moveConn:Disconnect() end
 			end)
-
 
 			hum:MoveTo(wp.Position)
 
 			local t0 = os.clock()
 			while not reached do
 				if token ~= self._token then
-					if moveConn then moveConn:Disconnect() end
+					moveConn:Disconnect()
 					return
 				end
 
 				if os.clock() - t0 > 3.0 then
-					if moveConn then moveConn:Disconnect() end
-
+					moveConn:Disconnect()
 					path:ComputeAsync(hrp.Position, cf.Position)
 					if path.Status == Enum.PathStatus.Success then
 						for _, wp2 in ipairs(path:GetWaypoints()) do
 							if token ~= self._token then return end
-
 							if wp2.Action == Enum.PathWaypointAction.Jump then
 								hum:ChangeState(Enum.HumanoidStateType.Jumping)
 							end
 
 							local reached2 = false
-							local c2
-							c2 = hum.MoveToFinished:Connect(function()
+							local c2 = hum.MoveToFinished:Connect(function()
 								reached2 = true
-								if c2 then c2:Disconnect() end
 							end)
 
 							hum:MoveTo(wp2.Position)
 
 							local t1 = os.clock()
 							while not reached2 do
-								if token ~= self._token then
-									if c2 then c2:Disconnect() end
-									return
-								end
-								if os.clock() - t1 > 3.0 then
-									if c2 then c2:Disconnect() end
+								if token ~= self._token or os.clock() - t1 > 3.0 then
+									c2:Disconnect()
 									return
 								end
 								task.wait(0.05)
 							end
+							c2:Disconnect()
 						end
 					end
-
 					return
 				end
-
 				task.wait(0.05)
 			end
+			moveConn:Disconnect()
 		end
 	end
 end
@@ -330,41 +552,36 @@ function PrestineManager:Travel(target)
 end
 
 function PrestineManager:CustomTravel(target, overrides)
-    overrides = overrides or {}
+	overrides = overrides or {}
+	local oldMethod = self.Config.TravelMethod
+	local oldSpeed = self.Config.TweenSpeed
+	local oldDelay = self.Config.TeleportDelay
+	local oldQueue = self.Config.QueueMode
 
-    local oldMethod = self.Config.TravelMethod
-    local oldSpeed = self.Config.TweenSpeed
-    local oldDelay = self.Config.TeleportDelay
-    local oldQueue = self.Config.QueueMode
+	if overrides.Method and isValidMethod(overrides.Method) then
+		self.Config.TravelMethod = overrides.Method
+	end
+	if overrides.Speed then
+		self.Config.TweenSpeed = math.max(1, tonumber(overrides.Speed) or self.Config.TweenSpeed)
+	end
+	if overrides.TeleportDelay then
+		self.Config.TeleportDelay = math.max(0, tonumber(overrides.TeleportDelay) or 0)
+	end
+	if overrides.QueueMode ~= nil then
+		self.Config.QueueMode = overrides.QueueMode and true or false
+	end
 
-    if overrides.Method and isValidMethod(overrides.Method) then
-        self.Config.TravelMethod = overrides.Method
-    end
+	self:Travel(target)
 
-    if overrides.Speed then
-        self.Config.TweenSpeed = math.max(1, tonumber(overrides.Speed) or self.Config.TweenSpeed)
-    end
-
-    if overrides.TeleportDelay then
-        self.Config.TeleportDelay = math.max(0, tonumber(overrides.TeleportDelay) or 0)
-    end
-
-    if overrides.QueueMode ~= nil then
-        self.Config.QueueMode = overrides.QueueMode and true or false
-    end
-
-    self:Travel(target)
-
-    task.spawn(function()
-        while self.State.Busy do
-            task.wait()
-        end
-
-        self.Config.TravelMethod = oldMethod
-        self.Config.TweenSpeed = oldSpeed
-        self.Config.TeleportDelay = oldDelay
-        self.Config.QueueMode = oldQueue
-    end)
+	task.spawn(function()
+		while self.State.Busy do
+			task.wait()
+		end
+		self.Config.TravelMethod = oldMethod
+		self.Config.TweenSpeed = oldSpeed
+		self.Config.TeleportDelay = oldDelay
+		self.Config.QueueMode = oldQueue
+	end)
 end
 
 function PrestineManager:TravelMultiple(list)
@@ -373,21 +590,6 @@ function PrestineManager:TravelMultiple(list)
 		self:Enqueue(t)
 	end
 	self:StartQueue()
-end
-
-function PrestineManager:_trySetParagraphContent(paragraphObj, text)
-	if not paragraphObj then return false end
-	local candidates = { "SetContent", "SetText", "Update", "Set", "SetValue" }
-	for _, m in ipairs(candidates) do
-		local f = paragraphObj[m]
-		if typeof(f) == "function" then
-			local ok = pcall(function()
-				f(paragraphObj, text)
-			end)
-			if ok then return true end
-		end
-	end
-	return false
 end
 
 function PrestineManager:_bindCharacterSafety()
@@ -405,314 +607,16 @@ function PrestineManager:_bindCharacterSafety()
 		end
 	end)
 
-	local hum = nil
-	pcall(function()
-		hum = getCharacter():FindFirstChildOfClass("Humanoid")
+	task.spawn(function()
+		local hum = getHumanoid()
+		if hum then
+			if self._deathConn then self._deathConn:Disconnect() end
+			self._deathConn = hum.Died:Connect(function()
+				self:Cancel()
+				self.State.CurrentTask = "Died"
+			end)
+		end
 	end)
-
-	if self._deathConn then self._deathConn:Disconnect() end
-	if hum then
-		self._deathConn = hum.Died:Connect(function()
-			self:Cancel()
-			self.State.CurrentTask = "Died"
-		end)
-	end
-end
-
-local SERVER_START = os.clock()
-
-local function formatUptime(seconds)
-	seconds = math.floor(seconds)
-
-	local s = seconds % 60
-	local m = math.floor(seconds / 60) % 60
-	local h = math.floor(seconds / 3600) % 24
-	local d = math.floor(seconds / 86400) % 7
-	local w = math.floor(seconds / 604800)
-
-	local parts = {}
-	if w > 0 then table.insert(parts, w .. "w") end
-	if d > 0 then table.insert(parts, d .. "d") end
-	if h > 0 then table.insert(parts, h .. "h") end
-	if m > 0 then table.insert(parts, m .. "m") end
-	table.insert(parts, s .. "s")
-
-	return table.concat(parts, " ")
-end
-
-local function getServerInfoText()
-	local serverType =
-		game.PrivateServerId ~= "" and
-		(game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved") or
-		"Public"
-
-	local uptime = os.clock() - SERVER_START
-
-	return "Game Name: " .. game.Name ..
-		"\nPlace ID: " .. game.PlaceId ..
-		"\nGame ID: " .. game.GameId ..
-		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
-		"\nServer Type: " .. serverType ..
-		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
-		"\nUptime: " .. formatUptime(uptime) ..
-		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
-		"\nGravity: " .. tostring(workspace.Gravity)
-end
-
-local function getPerformanceText(self)
-	return "FPS: " .. tostring(self._fps) ..
-		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
-end
-
-local function getCamera()
-	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
-end
-
-local function setCameraToPlayer(plr)
-	if not plr then return end
-	local char = plr.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		local cam = getCamera()
-		cam.CameraSubject = hum
-	end
-end
-
-local function resetCamera()
-	local char = player.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		local cam = getCamera()
-		cam.CameraSubject = hum
-	end
-end
-
-local function getPlayerNames()
-	local list = {}
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= player then
-			table.insert(list, plr.Name)
-		end
-	end
-	return list
-end
-
-local function toggleTextures(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("Decal") or inst:IsA("Texture") then
-			if state then
-				if inst:GetAttribute("Prestine_T") == nil then
-					inst:SetAttribute("Prestine_T", inst.Transparency)
-				end
-				inst.Transparency = 1
-			else
-				local t = inst:GetAttribute("Prestine_T")
-				if t ~= nil then
-					inst.Transparency = t
-					inst:SetAttribute("Prestine_T", nil)
-				end
-			end
-		end
-	end
-end
-
-local function toggleEffects(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("ParticleEmitter")
-		or inst:IsA("Trail")
-		or inst:IsA("Beam") then
-			inst.Enabled = not state
-		end
-	end
-end
-
-local function toggleLighting(state)
-	local Lighting = game:GetService("Lighting")
-	local o = PrestineManager._original.Lighting
-
-	if state then
-		if not o._saved then
-			o._saved = true
-			o.Brightness = Lighting.Brightness
-			o.GlobalShadows = Lighting.GlobalShadows
-			o.Ambient = Lighting.Ambient
-			o.OutdoorAmbient = Lighting.OutdoorAmbient
-			o.Post = {}
-
-			for _, fx in ipairs(Lighting:GetChildren()) do
-				if fx:IsA("PostEffect") then
-					o.Post[fx] = fx.Enabled
-					fx.Enabled = false
-				end
-			end
-		end
-
-		Lighting.Brightness = 1
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.new(1,1,1)
-		Lighting.OutdoorAmbient = Color3.new(1,1,1)
-	else
-		if o._saved then
-			Lighting.Brightness = o.Brightness
-			Lighting.GlobalShadows = o.GlobalShadows
-			Lighting.Ambient = o.Ambient
-			Lighting.OutdoorAmbient = o.OutdoorAmbient
-
-			for fx, enabled in pairs(o.Post or {}) do
-				if fx then fx.Enabled = enabled end
-			end
-		end
-	end
-end
-
-local function toggleFog(state)
-	local Lighting = game:GetService("Lighting")
-
-	if state then
-		if not PrestineManager._original.Lighting._fogSaved then
-			PrestineManager._original.Lighting.FogEnd = Lighting.FogEnd
-			PrestineManager._original.Lighting.FogStart = Lighting.FogStart
-			PrestineManager._original.Lighting._fogSaved = true
-		end
-		Lighting.FogEnd = 1e6
-		Lighting.FogStart = 1e6
-	else
-		local o = PrestineManager._original.Lighting
-		if o._fogSaved then
-			Lighting.FogEnd = o.FogEnd
-			Lighting.FogStart = o.FogStart
-		end
-	end
-end
-
-local Lighting = game:GetService("Lighting")
-local Terrain = workspace:FindFirstChildOfClass("Terrain")
-
-local function toggleShadows(state)
-	local Lighting = game:GetService("Lighting")
-	local o = PrestineManager._original.Lighting
-
-	if state then
-		if o._shadows == nil then
-			o._shadows = Lighting.GlobalShadows
-		end
-		Lighting.GlobalShadows = false
-	else
-		if o._shadows ~= nil then
-			Lighting.GlobalShadows = o._shadows
-		end
-	end
-end
-
-local function toggleRenderDistance(state)
-	if state then
-		PrestineManager._original.Streaming.Target = workspace.StreamingTargetRadius
-		PrestineManager._original.Streaming.Min = workspace.StreamingMinRadius
-		workspace.StreamingTargetRadius = 64
-		workspace.StreamingMinRadius = 64
-	else
-		if PrestineManager._original.Streaming.Target then
-			workspace.StreamingTargetRadius = PrestineManager._original.Streaming.Target
-			workspace.StreamingMinRadius = PrestineManager._original.Streaming.Min
-		end
-	end
-end
-
-local function toggleWater(state)
-	if not Terrain then return end
-
-	if state then
-		PrestineManager._original.Water = {
-			WaveSize = Terrain.WaterWaveSize,
-			WaveSpeed = Terrain.WaterWaveSpeed,
-			Reflectance = Terrain.WaterReflectance,
-			Transparency = Terrain.WaterTransparency
-		}
-
-		Terrain.WaterWaveSize = 0
-		Terrain.WaterWaveSpeed = 0
-		Terrain.WaterReflectance = 0
-		Terrain.WaterTransparency = 1
-	else
-		local o = PrestineManager._original.Water
-		if o then
-			Terrain.WaterWaveSize = o.WaveSize or Terrain.WaterWaveSize
-			Terrain.WaterWaveSpeed = o.WaveSpeed or Terrain.WaterWaveSpeed
-			Terrain.WaterReflectance = o.Reflectance or Terrain.WaterReflectance
-			Terrain.WaterTransparency = o.Transparency or Terrain.WaterTransparency
-		end
-	end
-end
-
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-
-local function getServerForMode(mode)
-	local placeId = game.PlaceId
-	local cursor = ""
-	local bestServer = nil
-
-	for _ = 1, 5 do
-		local url =
-			"https://games.roblox.com/v1/games/" .. placeId ..
-			"/servers/Public?sortOrder=Asc&limit=100" ..
-			(cursor ~= "" and "&cursor=" .. cursor or "")
-
-		local ok, res = pcall(function()
-			return game:HttpGet(url)
-		end)
-		if not ok then return nil end
-
-		local data = HttpService:JSONDecode(res)
-
-		for _, s in ipairs(data.data) do
-			if s.playing < s.maxPlayers then
-				if mode == "Lowest" then
-					if not bestServer or s.playing < bestServer.playing then
-						bestServer = s
-					end
-				elseif mode == "Max" then
-					if not bestServer or s.playing > bestServer.playing then
-						bestServer = s
-					end
-				elseif mode == "Full" then
-					if s.playing >= s.maxPlayers - 1 then
-						return s
-					end
-				end
-			end
-		end
-
-		if not data.nextPageCursor then break end
-		cursor = data.nextPageCursor
-	end
-
-	return bestServer
-end
-
-local function applyLowGraphics(state)
-	toggleTextures(state)
-	toggleEffects(state)
-	toggleLighting(state)
-	toggleFog(state)
-	toggleShadows(state)
-	toggleRenderDistance(state)
-	toggleWater(state)
-end
-
-local VirtualUser = game:GetService("VirtualUser")
-
-local function getHRP()
-	local char = player.Character
-	return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function copy(text)
-	if setclipboard then
-		pcall(function() setclipboard(text) end)
-	end
 end
 
 function PrestineManager:SetUpStarterUI()
@@ -720,32 +624,23 @@ function PrestineManager:SetUpStarterUI()
 	if not PrestineLib then return end
 
 	PrestineLib:AddNotification({
-	    TitleText = "Prestine Loaded",
-	    ContentText = "The script has been successfully initialized.",
-	    Duration = 5
+		TitleText = "Prestine Loaded",
+		ContentText = "The manager has been successfully initialized.",
+		Duration = 5
 	})
 
 	self:_bindCharacterSafety()
 
-	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home" })
+	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home Links" })
 
 	PrestineLib:AddButton({
 		Tab = "Home",
 		MainName = "Copy YouTube",
 		Callback = function()
-			local ok = setClipboard("https://www.youtube.com/@PrestineScripts")
-			if ok then
-				PrestineLib:AddNotification({
-				    TitleText = "Link Copied!",
-				    ContentText = "YouTube link copied to clipboard.",
-				    Duration = 3
-				})
+			if setClipboard("https://www.youtube.com/@PrestineScripts") then
+				PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "YouTube link copied.", Duration = 3 })
 			else
-				PrestineLib:AddNotification({
-				    TitleText = "Copy Failed!",
-				    ContentText = "Unsupported Function [setclipboard()]",
-				    Duration = 3
-				})
+				PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
 			end
 		end
 	})
@@ -754,19 +649,10 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Home",
 		MainName = "Copy Discord",
 		Callback = function()
-			local ok = setClipboard("https://discord.com/invite/AEmYSz6g4C")
-			if ok then
-				PrestineLib:AddNotification({
-				    TitleText = "Link Copied!",
-				    ContentText = "Discord link copied to clipboard.",
-				    Duration = 3
-				})
+			if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
+				PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "Discord link copied.", Duration = 3 })
 			else
-				PrestineLib:AddNotification({
-				    TitleText = "Copy Failed!",
-				    ContentText = "Unsupported Function [setclipboard()]",
-				    Duration = 3
-				})
+				PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
 			end
 		end
 	})
@@ -797,11 +683,7 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Clear Queue",
 		Callback = function()
 			self:ClearQueue()
-			PrestineLib:AddNotification({
-				TitleText = "Queue",
-				ContentText = "Succesfully Cleared Queue!",
-				Duration = 3
-			})
+			PrestineLib:AddNotification({ TitleText = "Queue", ContentText = "Successfully Cleared Queue!", Duration = 3 })
 		end
 	})
 
@@ -810,15 +692,11 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Cancel Movement",
 		Callback = function()
 			self:Cancel()
-			PrestineLib:AddNotification({
-				TitleText = "Movement",
-				ContentText = "Succesfully Cancelled Movement",
-				Duration = 5
-			})
+			PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 })
 		end
 	})
 
-	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player" })
+	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
 	
 	PrestineLib:AddSlider({
 		Tab = "Player",
@@ -828,8 +706,7 @@ function PrestineManager:SetUpStarterUI()
 		DefaultValue = 16,
 		Increment = 10,
 		Callback = function(v)
-			local hum = getHumanoid()
-			hum.WalkSpeed = v
+			pcall(function() getHumanoid().WalkSpeed = v end)
 		end
 	})
 	
@@ -841,9 +718,11 @@ function PrestineManager:SetUpStarterUI()
 		DefaultValue = 50,
 		Increment = 10,
 		Callback = function(v)
-			local hum = getHumanoid()
-			hum.UseJumpPower = true
-			hum.JumpPower = v
+			pcall(function() 
+				local hum = getHumanoid()
+				hum.UseJumpPower = true
+				hum.JumpPower = v
+			end)
 		end
 	})
 
@@ -860,20 +739,19 @@ function PrestineManager:SetUpStarterUI()
 
 	local names = getPlayerNames()
 	PrestineLib:AddDropdown({
-	    Tab = "Player",
-	    MainTitle = "Select Player",
-	    ChoiceList = names,
-	    DefaultChoice = names[1] or "None",
-	    Multiple = false,
-	    Callback = function(v)
-	        local name = typeof(v) == "table" and v[1] or v
-	        PrestineManager._spyTarget = Players:FindFirstChild(name)
-	        if PrestineManager._spyEnabled and PrestineManager._spyTarget then
-	            setCameraToPlayer(PrestineManager._spyTarget)
-	        end
-	    end
+		Tab = "Player",
+		MainTitle = "Select Player",
+		ChoiceList = names,
+		DefaultChoice = names[1] or "None",
+		Multiple = false,
+		Callback = function(v)
+			local name = typeof(v) == "table" and v[1] or v
+			PrestineManager._spyTarget = Players:FindFirstChild(name)
+			if PrestineManager._spyEnabled and PrestineManager._spyTarget then
+				setCameraToPlayer(PrestineManager._spyTarget)
+			end
+		end
 	})
-
 
 	PrestineLib:AddToggle({
 		Tab = "Player",
@@ -881,13 +759,10 @@ function PrestineManager:SetUpStarterUI()
 		DefaultState = false,
 		Callback = function(state)
 			PrestineManager._spyEnabled = state
-	
 			local cam = getCamera()
 			if not cam then return end
-	
 			if state then
 				PrestineManager._prevCameraSubject = cam.CameraSubject
-	
 				if PrestineManager._spyTarget then
 					setCameraToPlayer(PrestineManager._spyTarget)
 				end
@@ -991,12 +866,10 @@ function PrestineManager:SetUpStarterUI()
 		MainName = "Anti AFK",
 		Callback = function(state)
 			PrestineManager._antiAfk = state
-	
 			if PrestineManager._antiAfkConn then
 				PrestineManager._antiAfkConn:Disconnect()
 				PrestineManager._antiAfkConn = nil
 			end
-	
 			if state then
 				PrestineManager._antiAfkConn = player.Idled:Connect(function()
 					VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
@@ -1011,8 +884,7 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Utility",
 		MainName = "Reset Character",
 		Callback = function()
-			local hum = getHumanoid()
-			if hum then hum.Health = 0 end
+			pcall(function() getHumanoid().Health = 0 end)
 		end
 	})
 
@@ -1020,9 +892,9 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Utility",
 		MainName = "Copy Position (CFrame)",
 		Callback = function()
-			local hrp = getHRP()
+			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				copy("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
+				setClipboard("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
 			end
 		end
 	})
@@ -1031,10 +903,10 @@ function PrestineManager:SetUpStarterUI()
 		Tab = "Utility",
 		MainName = "Copy Position (Vector3)",
 		Callback = function()
-			local hrp = getHRP()
+			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if hrp then
 				local p = hrp.Position
-				copy(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
+				setClipboard(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
 			end
 		end
 	})
@@ -1058,11 +930,7 @@ function PrestineManager:SetUpStarterUI()
 		Callback = function()
 			local server = getServerForMode(PrestineManager._serverJoinMode)
 			if server and server.id then
-				TeleportService:TeleportToPlaceInstance(
-					game.PlaceId,
-					server.id,
-					player
-				)
+				TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
 			end
 		end
 	})
@@ -1083,7 +951,7 @@ function PrestineManager:SetUpStarterUI()
 		end
 	})
 
-	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement" })
+	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Config" })
 
 	PrestineLib:AddDropdown({
 		Tab = "Settings",
@@ -1123,12 +991,12 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddKeybind({
-	    Tab = "Settings",
-	    MainTitle = "Toggle UI",
-	    DefaultKey = Enum.KeyCode.RightShift,
-	    Callback = function(key)
+		Tab = "Settings",
+		MainTitle = "Toggle UI",
+		DefaultKey = Enum.KeyCode.RightShift,
+		Callback = function(key)
 			PrestineLib.GUIHotkey = key
-	    end
+		end
 	})
 
 	PrestineLib:AddToggle({
@@ -1149,85 +1017,55 @@ function PrestineManager:SetUpStarterUI()
 		DefaultState = true
 	})
 
-	if self._uiConn then
-		self._uiConn:Disconnect()
-		self._uiConn = nil
-	end
-	
-	self._uiConn = task.spawn(function()
-		while PrestineLib do
-			task.wait(0.25)
-	
-			local char = player.Character
-			if not char then continue end
-	
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if not hum then continue end
-	
-			local ws = hum.WalkSpeed
-			local jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
-			local hp = hum.Health
-			local mhp = hum.MaxHealth
-	
-			local statusText =
-				"Task: " .. tostring(self.State.CurrentTask) ..
-				"\nQueue: " .. #self._queue ..
-				"\nMethod: " .. self.Config.TravelMethod ..
-				"\nTweenSpeed: " .. self.Config.TweenSpeed ..
-				"\nTeleportDelay: " .. self.Config.TeleportDelay ..
-				"\nWalkSpeed: " .. ws ..
-				"\nJump: " .. jp ..
-				"\nHealth: " .. string.format("%.0f/%.0f", hp, mhp)
-	
-			if hrp then
-				statusText ..=
-					"\nState: " .. hum:GetState().Name ..
-					"\nRoot Anchored: " .. tostring(hrp.Anchored)
-			end
-	
-			if statusText ~= self._lastStatusText then
-				self._lastStatusText = statusText
-				local ok = self:_trySetParagraphContent(self._statusParagraph, statusText)
-				if not ok and not self._lastStatusWarned then
-					self._lastStatusWarned = true
-				end
-			end
-	
-			if os.clock() - self._lastServerUpdate >= 1 then
-				self._lastServerUpdate = os.clock()
-				if self._serverStatusParagraph then
-					self:_trySetParagraphContent(
-						self._serverStatusParagraph,
-						getServerInfoText()
-					)
-				end
-			end
-	
-			if os.clock() - self._lastPerfUpdate >= 0.5 then
-				self._lastPerfUpdate = os.clock()
-				if self._perfParagraph then
-					self:_trySetParagraphContent(
-						self._perfParagraph,
-						getPerformanceText(self)
-					)
-				end
+	if self._uiConn then self._uiConn:Disconnect() end
+	self._uiConn = RunService.Heartbeat:Connect(function()
+		local char = player.Character
+		if not char then return end
+
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hum then return end
+
+		local statusText =
+			"Task: " .. tostring(self.State.CurrentTask) ..
+			"\nQueue: " .. #self._queue ..
+			"\nMethod: " .. self.Config.TravelMethod ..
+			"\nTweenSpeed: " .. self.Config.TweenSpeed ..
+			"\nTeleportDelay: " .. self.Config.TeleportDelay ..
+			"\nWalkSpeed: " .. hum.WalkSpeed ..
+			"\nJump: " .. (hum.UseJumpPower and hum.JumpPower or hum.JumpHeight) ..
+			"\nHealth: " .. string.format("%.0f/%.0f", hum.Health, hum.MaxHealth)
+
+		if hrp then
+			statusText ..= "\nState: " .. hum:GetState().Name .. "\nRoot Anchored: " .. tostring(hrp.Anchored)
+		end
+
+		if self._statusParagraph then
+			self._statusParagraph:SetContent(statusText)
+		end
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			if self._serverStatusParagraph then
+				self._serverStatusParagraph:SetContent(getServerInfoText())
 			end
 		end
 	end)
 
-	self._fpsConn = task.spawn(function()
-		while PrestineLib do
-			local frames = 0
-			local start = os.clock()
-	
-			while os.clock() - start < 1 do
-				frames += 1
-				task.wait()
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			if self._perfParagraph then
+				self._perfParagraph:SetContent(getPerformanceText(self))
 			end
-	
-			PrestineManager._fps = frames
 		end
+	end)
+
+	if self._fpsConn then self._fpsConn:Disconnect() end
+	self._fpsConn = RunService.RenderStepped:Connect(function(dt)
+		PrestineManager._fps = math.floor(1 / dt)
 	end)
 end
 
