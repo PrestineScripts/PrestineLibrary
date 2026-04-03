@@ -192,9 +192,11 @@ end
 
 local function getServerInfoText()
 	local serverType = "Public"
-	if game.PrivateServerId ~= "" then
-		serverType = game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved"
-	end
+	pcall(function()
+		if game.PrivateServerId ~= "" then
+			serverType = game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved"
+		end
+	end)
 
 	return "Game Name: " .. game.Name ..
 		"\nPlace ID: " .. game.PlaceId ..
@@ -683,16 +685,7 @@ function PrestineManager:_bindCharacterSafety()
 	end)
 end
 
-function PrestineManager:SetUpStarterUI()
-	local PrestineLib = getgenv().PrestineLib
-	if not PrestineLib then return end
-
-	PrestineLib:AddNotification({
-		TitleText = "Prestine Loaded",
-		ContentText = "The manager has been successfully initialized.",
-		Duration = 5
-	})
-
+function PrestineManager:SetupHome(PrestineLib)
 	self:_bindCharacterSafety()
 
 	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home Links" })
@@ -759,7 +752,9 @@ function PrestineManager:SetUpStarterUI()
 			PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 })
 		end
 	})
+end
 
+function PrestineManager:SetupPlayer(PrestineLib)
 	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
 	
 	PrestineLib:AddSlider({
@@ -848,7 +843,9 @@ function PrestineManager:SetUpStarterUI()
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
 	end)
+end
 
+function PrestineManager:SetupPerformance(PrestineLib)
 	PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance" })
 
 	PrestineLib:AddToggle({
@@ -922,7 +919,9 @@ function PrestineManager:SetUpStarterUI()
 			applyLowGraphics(s)
 		end
 	})
+end
 
+function PrestineManager:SetupUtility(PrestineLib)
 	PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Utility" })
 
 	PrestineLib:AddToggle({
@@ -1014,7 +1013,9 @@ function PrestineManager:SetUpStarterUI()
 			TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
 		end
 	})
+end
 
+function PrestineManager:SetupSettings(PrestineLib)
 	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Config" })
 
 	PrestineLib:AddDropdown({
@@ -1074,14 +1075,10 @@ function PrestineManager:SetUpStarterUI()
 			end
 		end
 	})
+end
 
-	PrestineLib:AddSaveToggle({
-		Tab = "Settings",
-		MainName = "Auto Save Config",
-		DefaultState = true
-	})
-
-	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Config Management" })
+function PrestineManager:SetupConfig(PrestineLib)
+	PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Management" })
 
 	local selectedConfig = "Default"
 	local configNameInput = "Default"
@@ -1089,7 +1086,7 @@ function PrestineManager:SetUpStarterUI()
 
 	local configDropdown
 	configDropdown = PrestineLib:AddDropdown({
-		Tab = "Settings",
+		Tab = "Config",
 		MainTitle = "Select Config",
 		ChoiceList = getConfigs(),
 		DefaultChoice = "Default",
@@ -1100,7 +1097,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddInput({
-		Tab = "Settings",
+		Tab = "Config",
 		MainTitle = "Config Name",
 		PlaceHolder = "Enter config name...",
 		Callback = function(v)
@@ -1110,16 +1107,14 @@ function PrestineManager:SetUpStarterUI()
 
 	local function refreshDropdown()
 		pcall(function()
-			if configDropdown and configDropdown.Refresh then
-				configDropdown:Refresh(getConfigs())
-			elseif configDropdown and configDropdown.SetList then
-				configDropdown:SetList(getConfigs())
+			if configDropdown and configDropdown.UpdateDropdown then
+				configDropdown:UpdateDropdown(getConfigs())
 			end
 		end)
 	end
 
 	PrestineLib:AddButton({
-		Tab = "Settings",
+		Tab = "Config",
 		MainName = "Create / Save Config",
 		Callback = function()
 			if configNameInput and configNameInput ~= "" then
@@ -1131,7 +1126,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddButton({
-		Tab = "Settings",
+		Tab = "Config",
 		MainName = "Overwrite Selected Config",
 		Callback = function()
 			if selectedConfig and selectedConfig ~= "" then
@@ -1142,7 +1137,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddButton({
-		Tab = "Settings",
+		Tab = "Config",
 		MainName = "Load Selected Config",
 		Callback = function()
 			if selectedConfig and selectedConfig ~= "" then
@@ -1156,7 +1151,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddButton({
-		Tab = "Settings",
+		Tab = "Config",
 		MainName = "Delete Selected Config",
 		Callback = function()
 			if selectedConfig and selectedConfig ~= "" then
@@ -1168,7 +1163,7 @@ function PrestineManager:SetUpStarterUI()
 	})
 
 	PrestineLib:AddButton({
-		Tab = "Settings",
+		Tab = "Config",
 		MainName = "Set As Autoload",
 		Callback = function()
 			if selectedConfig and selectedConfig ~= "" then
@@ -1177,6 +1172,12 @@ function PrestineManager:SetUpStarterUI()
 				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 })
 			end
 		end
+	})
+
+	PrestineLib:AddSaveToggle({
+		Tab = "Config",
+		MainName = "Auto Save Component Toggles",
+		DefaultState = true
 	})
 
 	task.spawn(function()
@@ -1191,6 +1192,17 @@ function PrestineManager:SetUpStarterUI()
 			end
 		end)
 	end)
+end
+
+function PrestineManager:Init(PrestineLib)
+	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
+
+	self:SetupHome(PrestineLib)
+	self:SetupPlayer(PrestineLib)
+	self:SetupPerformance(PrestineLib)
+	self:SetupUtility(PrestineLib)
+	self:SetupSettings(PrestineLib)
+	self:SetupConfig(PrestineLib)
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
