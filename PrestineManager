@@ -685,155 +685,191 @@ function PrestineManager:_bindCharacterSafety()
 	end)
 end
 
+-- HELPER: Check if a component title/name is excluded
+function PrestineManager:IsExcluded(featureName)
+	if not self._initOptions or not self._initOptions.ExcludeFeatures then return false end
+	return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
+end
+
 function PrestineManager:SetupHome(PrestineLib)
 	self:_bindCharacterSafety()
 
-	PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home Links" })
+	if not self:IsExcluded("Home Links") then
+		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home Links" })
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Home",
-		MainName = "Copy YouTube",
-		Callback = function()
-			if setClipboard("https://www.youtube.com/@PrestineScripts") then
-				PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "YouTube link copied.", Duration = 3 })
-			else
-				PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
+	if not self:IsExcluded("Copy YouTube") then
+		PrestineLib:AddButton({
+			Tab = "Home",
+			MainName = "Copy YouTube",
+			Callback = function()
+				if setClipboard("https://www.youtube.com/@PrestineScripts") then
+					PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "YouTube link copied.", Duration = 3 })
+				else
+					PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
+				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Home",
-		MainName = "Copy Discord",
-		Callback = function()
-			if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
-				PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "Discord link copied.", Duration = 3 })
-			else
-				PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
+	if not self:IsExcluded("Copy Discord") then
+		PrestineLib:AddButton({
+			Tab = "Home",
+			MainName = "Copy Discord",
+			Callback = function()
+				if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
+					PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "Discord link copied.", Duration = 3 })
+				else
+					PrestineLib:AddNotification({ TitleText = "Copy Failed!", ContentText = "Unsupported Function", Duration = 3 })
+				end
 			end
-		end
-	})
+		})
+	end
 
-	self._statusParagraph = PrestineLib:AddParagraph({
-		Tab = "Home",
-		MainTitle = "Character Status",
-		paragraphSize = 140,
-		MainContent = "Loading..."
-	})
+	if not self:IsExcluded("Character Status") then
+		self._statusParagraph = PrestineLib:AddParagraph({
+			Tab = "Home",
+			MainTitle = "Character Status",
+			paragraphSize = 140,
+			MainContent = "Loading..."
+		})
+	end
 
-	self._serverStatusParagraph = PrestineLib:AddParagraph({
-		Tab = "Home",
-		MainTitle = "Server Info",
-		paragraphSize = 160,
-		MainContent = "Loading..."
-	})
+	if not self:IsExcluded("Server Info") then
+		self._serverStatusParagraph = PrestineLib:AddParagraph({
+			Tab = "Home",
+			MainTitle = "Server Info",
+			paragraphSize = 160,
+			MainContent = "Loading..."
+		})
+	end
 
-	self._perfParagraph = PrestineLib:AddParagraph({
-		Tab = "Home",
-		MainTitle = "Performance",
-		paragraphSize = 90,
-		MainContent = "Loading..."
-	})
+	if not self:IsExcluded("Performance") then
+		self._perfParagraph = PrestineLib:AddParagraph({
+			Tab = "Home",
+			MainTitle = "Performance",
+			paragraphSize = 90,
+			MainContent = "Loading..."
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Home",
-		MainName = "Clear Queue",
-		Callback = function()
-			self:ClearQueue()
-			PrestineLib:AddNotification({ TitleText = "Queue", ContentText = "Successfully Cleared Queue!", Duration = 3 })
-		end
-	})
+	if not self:IsExcluded("Clear Queue") then
+		PrestineLib:AddButton({
+			Tab = "Home",
+			MainName = "Clear Queue",
+			Callback = function()
+				self:ClearQueue()
+				PrestineLib:AddNotification({ TitleText = "Queue", ContentText = "Successfully Cleared Queue!", Duration = 3 })
+			end
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Home",
-		MainName = "Cancel Movement",
-		Callback = function()
-			self:Cancel()
-			PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 })
-		end
-	})
+	if not self:IsExcluded("Cancel Movement") then
+		PrestineLib:AddButton({
+			Tab = "Home",
+			MainName = "Cancel Movement",
+			Callback = function()
+				self:Cancel()
+				PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 })
+			end
+		})
+	end
 end
 
 function PrestineManager:SetupPlayer(PrestineLib)
-	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
+	if not self:IsExcluded("Player Properties") then
+		PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
+	end
 	
-	PrestineLib:AddSlider({
-		Tab = "Player",
-		SliderTitle = "WalkSpeed",
-		Min = 0,
-		Max = 500,
-		DefaultValue = 16,
-		Increment = 10,
-		Callback = function(v)
-			pcall(function() getHumanoid().WalkSpeed = v end)
-		end
-	})
-	
-	PrestineLib:AddSlider({
-		Tab = "Player",
-		SliderTitle = "Jump Power",
-		Min = 0,
-		Max = 1000,
-		DefaultValue = 50,
-		Increment = 10,
-		Callback = function(v)
-			pcall(function() 
-				local hum = getHumanoid()
-				hum.UseJumpPower = true
-				hum.JumpPower = v
-			end)
-		end
-	})
-
-	PrestineLib:AddToggle({
-		Tab = "Player",
-		MainName = "Infinite Jump",
-		DefaultState = false,
-		Callback = function(state)
-			PrestineManager._infJump = state
-		end
-	})
-
-	PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
-
-	local names = getPlayerNames()
-	PrestineLib:AddDropdown({
-		Tab = "Player",
-		MainTitle = "Select Player",
-		ChoiceList = names,
-		DefaultChoice = names[1] or "None",
-		Multiple = false,
-		Callback = function(v)
-			local name = typeof(v) == "table" and v[1] or v
-			PrestineManager._spyTarget = Players:FindFirstChild(name)
-			if PrestineManager._spyEnabled and PrestineManager._spyTarget then
-				setCameraToPlayer(PrestineManager._spyTarget)
+	if not self:IsExcluded("WalkSpeed") then
+		PrestineLib:AddSlider({
+			Tab = "Player",
+			SliderTitle = "WalkSpeed",
+			Min = 0,
+			Max = 500,
+			DefaultValue = 16,
+			Increment = 10,
+			Callback = function(v)
+				pcall(function() getHumanoid().WalkSpeed = v end)
 			end
-		end
-	})
+		})
+	end
+	
+	if not self:IsExcluded("Jump Power") then
+		PrestineLib:AddSlider({
+			Tab = "Player",
+			SliderTitle = "Jump Power",
+			Min = 0,
+			Max = 1000,
+			DefaultValue = 50,
+			Increment = 10,
+			Callback = function(v)
+				pcall(function() 
+					local hum = getHumanoid()
+					hum.UseJumpPower = true
+					hum.JumpPower = v
+				end)
+			end
+		})
+	end
 
-	PrestineLib:AddToggle({
-		Tab = "Player",
-		MainName = "Enable Spy POV",
-		DefaultState = false,
-		Callback = function(state)
-			PrestineManager._spyEnabled = state
-			local cam = getCamera()
-			if not cam then return end
-			if state then
-				PrestineManager._prevCameraSubject = cam.CameraSubject
-				if PrestineManager._spyTarget then
+	if not self:IsExcluded("Infinite Jump") then
+		PrestineLib:AddToggle({
+			Tab = "Player",
+			MainName = "Infinite Jump",
+			DefaultState = false,
+			Callback = function(state)
+				PrestineManager._infJump = state
+			end
+		})
+	end
+
+	if not self:IsExcluded("Player Camera") then
+		PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
+	end
+
+	if not self:IsExcluded("Select Player") then
+		local names = getPlayerNames()
+		PrestineLib:AddDropdown({
+			Tab = "Player",
+			MainTitle = "Select Player",
+			ChoiceList = names,
+			DefaultChoice = names[1] or "None",
+			Multiple = false,
+			Callback = function(v)
+				local name = typeof(v) == "table" and v[1] or v
+				PrestineManager._spyTarget = Players:FindFirstChild(name)
+				if PrestineManager._spyEnabled and PrestineManager._spyTarget then
 					setCameraToPlayer(PrestineManager._spyTarget)
 				end
-			else
-				if PrestineManager._prevCameraSubject then
-					cam.CameraSubject = PrestineManager._prevCameraSubject
+			end
+		})
+	end
+
+	if not self:IsExcluded("Enable Spy POV") then
+		PrestineLib:AddToggle({
+			Tab = "Player",
+			MainName = "Enable Spy POV",
+			DefaultState = false,
+			Callback = function(state)
+				PrestineManager._spyEnabled = state
+				local cam = getCamera()
+				if not cam then return end
+				if state then
+					PrestineManager._prevCameraSubject = cam.CameraSubject
+					if PrestineManager._spyTarget then
+						setCameraToPlayer(PrestineManager._spyTarget)
+					end
 				else
-					resetCamera()
+					if PrestineManager._prevCameraSubject then
+						cam.CameraSubject = PrestineManager._prevCameraSubject
+					else
+						resetCamera()
+					end
 				end
 			end
-		end
-	})
+		})
+	end
 
 	if PrestineManager._infJumpConn then PrestineManager._infJumpConn:Disconnect() end
 	PrestineManager._infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
@@ -846,264 +882,320 @@ function PrestineManager:SetupPlayer(PrestineLib)
 end
 
 function PrestineManager:SetupPerformance(PrestineLib)
-	PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance" })
+	if not self:IsExcluded("Performance Settings") then
+		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance Settings" })
+	end
 
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Turn Off Textures",
-		Callback = function(s)
-			PrestineManager._perfFlags.Textures = s
-			toggleTextures(s)
-		end
-	})
+	if not self:IsExcluded("Turn Off Textures") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Turn Off Textures",
+			Callback = function(s)
+				PrestineManager._perfFlags.Textures = s
+				toggleTextures(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Turn Off Effects",
-		Callback = function(s)
-			PrestineManager._perfFlags.Effects = s
-			toggleEffects(s)
-		end
-	})
+	if not self:IsExcluded("Turn Off Effects") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Turn Off Effects",
+			Callback = function(s)
+				PrestineManager._perfFlags.Effects = s
+				toggleEffects(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Turn Off Lighting",
-		Callback = function(s)
-			PrestineManager._perfFlags.Lighting = s
-			toggleLighting(s)
-		end
-	})
+	if not self:IsExcluded("Turn Off Lighting") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Turn Off Lighting",
+			Callback = function(s)
+				PrestineManager._perfFlags.Lighting = s
+				toggleLighting(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Turn Off Fog",
-		Callback = function(s)
-			PrestineManager._perfFlags.Fog = s
-			toggleFog(s)
-		end
-	})
+	if not self:IsExcluded("Turn Off Fog") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Turn Off Fog",
+			Callback = function(s)
+				PrestineManager._perfFlags.Fog = s
+				toggleFog(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Disable Shadows",
-		Callback = function(s)
-			PrestineManager._perfFlags.Shadows = s
-			toggleShadows(s)
-		end
-	})
+	if not self:IsExcluded("Disable Shadows") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Disable Shadows",
+			Callback = function(s)
+				PrestineManager._perfFlags.Shadows = s
+				toggleShadows(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Reduce Render Distance",
-		Callback = function(s)
-			PrestineManager._perfFlags.RenderDistance = s
-			toggleRenderDistance(s)
-		end
-	})
+	if not self:IsExcluded("Reduce Render Distance") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Reduce Render Distance",
+			Callback = function(s)
+				PrestineManager._perfFlags.RenderDistance = s
+				toggleRenderDistance(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Disable Water Effects",
-		Callback = function(s)
-			PrestineManager._perfFlags.Water = s
-			toggleWater(s)
-		end
-	})
+	if not self:IsExcluded("Disable Water Effects") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Disable Water Effects",
+			Callback = function(s)
+				PrestineManager._perfFlags.Water = s
+				toggleWater(s)
+			end
+		})
+	end
 	
-	PrestineLib:AddToggle({
-		Tab = "Performance",
-		MainName = "Low Graphics Preset",
-		Callback = function(s)
-			PrestineManager._perfFlags.LowGraphics = s
-			applyLowGraphics(s)
-		end
-	})
+	if not self:IsExcluded("Low Graphics Preset") then
+		PrestineLib:AddToggle({
+			Tab = "Performance",
+			MainName = "Low Graphics Preset",
+			Callback = function(s)
+				PrestineManager._perfFlags.LowGraphics = s
+				applyLowGraphics(s)
+			end
+		})
+	end
 end
 
 function PrestineManager:SetupUtility(PrestineLib)
-	PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Utility" })
+	if not self:IsExcluded("Utility") then
+		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Utility" })
+	end
 
-	PrestineLib:AddToggle({
-		Tab = "Utility",
-		MainName = "Anti AFK",
-		Callback = function(state)
-			PrestineManager._antiAfk = state
-			if PrestineManager._antiAfkConn then
-				PrestineManager._antiAfkConn:Disconnect()
-				PrestineManager._antiAfkConn = nil
+	if not self:IsExcluded("Anti AFK") then
+		PrestineLib:AddToggle({
+			Tab = "Utility",
+			MainName = "Anti AFK",
+			Callback = function(state)
+				PrestineManager._antiAfk = state
+				if PrestineManager._antiAfkConn then
+					PrestineManager._antiAfkConn:Disconnect()
+					PrestineManager._antiAfkConn = nil
+				end
+				if state then
+					PrestineManager._antiAfkConn = player.Idled:Connect(function()
+						VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+						task.wait(1)
+						VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+					end)
+				end
 			end
-			if state then
-				PrestineManager._antiAfkConn = player.Idled:Connect(function()
-					VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-					task.wait(1)
-					VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-				end)
+		})
+	end
+
+	if not self:IsExcluded("Reset Character") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Reset Character",
+			Callback = function()
+				pcall(function() getHumanoid().Health = 0 end)
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Reset Character",
-		Callback = function()
-			pcall(function() getHumanoid().Health = 0 end)
-		end
-	})
-
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Copy Position (CFrame)",
-		Callback = function()
-			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				setClipboard("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
+	if not self:IsExcluded("Copy Position (CFrame)") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Copy Position (CFrame)",
+			Callback = function()
+				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					setClipboard("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
+				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Copy Position (Vector3)",
-		Callback = function()
-			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local p = hrp.Position
-				setClipboard(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
+	if not self:IsExcluded("Copy Position (Vector3)") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Copy Position (Vector3)",
+			Callback = function()
+				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local p = hrp.Position
+					setClipboard(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
+				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
+	if not self:IsExcluded("Server Hop") then
+		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
+	end
 	
-	PrestineLib:AddDropdown({
-		Tab = "Utility",
-		MainTitle = "Join Server Type",
-		ChoiceList = { "Lowest", "Max", "Full" },
-		DefaultChoice = "Lowest",
-		Multiple = false,
-		Callback = function(v)
-			PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
-		end
-	})
-	
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Join Server",
-		Callback = function()
-			local server = getServerForMode(PrestineManager._serverJoinMode)
-			if server and server.id then
-				TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+	if not self:IsExcluded("Join Server Type") then
+		PrestineLib:AddDropdown({
+			Tab = "Utility",
+			MainTitle = "Join Server Type",
+			ChoiceList = { "Lowest", "Max", "Full" },
+			DefaultChoice = "Lowest",
+			Multiple = false,
+			Callback = function(v)
+				PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
 			end
-		end
-	})
+		})
+	end
+	
+	if not self:IsExcluded("Join Server") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Join Server",
+			Callback = function()
+				local server = getServerForMode(PrestineManager._serverJoinMode)
+				if server and server.id then
+					TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+				end
+			end
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Rejoin Server",
-		Callback = function()
-			TeleportService:Teleport(game.PlaceId, player)
-		end
-	})
+	if not self:IsExcluded("Rejoin Server") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Rejoin Server",
+			Callback = function()
+				TeleportService:Teleport(game.PlaceId, player)
+			end
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Utility",
-		MainName = "Rejoin New Server",
-		Callback = function()
-			TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
-		end
-	})
+	if not self:IsExcluded("Rejoin New Server") then
+		PrestineLib:AddButton({
+			Tab = "Utility",
+			MainName = "Rejoin New Server",
+			Callback = function()
+				TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
+			end
+		})
+	end
 end
 
 function PrestineManager:SetupSettings(PrestineLib)
-	PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Config" })
+	if not self:IsExcluded("Movement Config") then
+		PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Config" })
+	end
 
-	PrestineLib:AddDropdown({
-		Tab = "Settings",
-		MainTitle = "Travel Method",
-		ChoiceList = { "Teleport", "Tween", "Walking" },
-		Multiple = false,
-		DefaultChoice = tostring(self.Config.TravelMethod),
-		Callback = function(v)
-			local m = typeof(v) == "table" and v[1] or v
-			if not isValidMethod(m) then m = "Teleport" end
-			self.Config.TravelMethod = m
-		end
-	})
-
-	PrestineLib:AddSlider({
-		Tab = "Settings",
-		SliderTitle = "Tween Speed",
-		Min = 50,
-		Max = 600,
-		DefaultValue = self.Config.TweenSpeed,
-		Increment = 10,
-		Callback = function(v)
-			self.Config.TweenSpeed = v
-		end
-	})
-
-	PrestineLib:AddInput({
-		Tab = "Settings",
-		MainTitle = "Teleport Delay",
-		PlaceHolder = "Seconds (0 - 10)",
-		Callback = function(v)
-			local n = clampNumber(v, 0, 10)
-			if n ~= nil then
-				self.Config.TeleportDelay = n
+	if not self:IsExcluded("Travel Method") then
+		PrestineLib:AddDropdown({
+			Tab = "Settings",
+			MainTitle = "Travel Method",
+			ChoiceList = { "Teleport", "Tween", "Walking" },
+			Multiple = false,
+			DefaultChoice = tostring(self.Config.TravelMethod),
+			Callback = function(v)
+				local m = typeof(v) == "table" and v[1] or v
+				if not isValidMethod(m) then m = "Teleport" end
+				self.Config.TravelMethod = m
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddKeybind({
-		Tab = "Settings",
-		MainTitle = "Toggle UI",
-		DefaultKey = Enum.KeyCode.RightShift,
-		Callback = function(key)
-			PrestineLib.GUIHotkey = key
-		end
-	})
-
-	PrestineLib:AddToggle({
-		Tab = "Settings",
-		MainName = "Travel Queue Mode",
-		DefaultState = true,
-		Callback = function(state)
-			PrestineManager.Config.QueueMode = state
-			if not state then
-				PrestineManager:Cancel()
+	if not self:IsExcluded("Tween Speed") then
+		PrestineLib:AddSlider({
+			Tab = "Settings",
+			SliderTitle = "Tween Speed",
+			Min = 50,
+			Max = 600,
+			DefaultValue = self.Config.TweenSpeed,
+			Increment = 10,
+			Callback = function(v)
+				self.Config.TweenSpeed = v
 			end
-		end
-	})
+		})
+	end
+
+	if not self:IsExcluded("Teleport Delay") then
+		PrestineLib:AddInput({
+			Tab = "Settings",
+			MainTitle = "Teleport Delay",
+			PlaceHolder = "Seconds (0 - 10)",
+			Callback = function(v)
+				local n = clampNumber(v, 0, 10)
+				if n ~= nil then
+					self.Config.TeleportDelay = n
+				end
+			end
+		})
+	end
+
+	if not self:IsExcluded("Toggle UI") then
+		PrestineLib:AddKeybind({
+			Tab = "Settings",
+			MainTitle = "Toggle UI",
+			DefaultKey = Enum.KeyCode.RightShift,
+			Callback = function(key)
+				PrestineLib.GUIHotkey = key
+			end
+		})
+	end
+
+	if not self:IsExcluded("Travel Queue Mode") then
+		PrestineLib:AddToggle({
+			Tab = "Settings",
+			MainName = "Travel Queue Mode",
+			DefaultState = true,
+			Callback = function(state)
+				PrestineManager.Config.QueueMode = state
+				if not state then
+					PrestineManager:Cancel()
+				end
+			end
+		})
+	end
 end
 
 function PrestineManager:SetupConfig(PrestineLib)
-	PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Management" })
+	if not self:IsExcluded("Config Management") then
+		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Management" })
+	end
 
 	local selectedConfig = "Default"
 	local configNameInput = "Default"
 	local autoloadFile = ConfigFolder .. "/" .. game.PlaceId .. "_autoload.txt"
 
 	local configDropdown
-	configDropdown = PrestineLib:AddDropdown({
-		Tab = "Config",
-		MainTitle = "Select Config",
-		ChoiceList = getConfigs(),
-		DefaultChoice = "Default",
-		Multiple = false,
-		Callback = function(v)
-			selectedConfig = typeof(v) == "table" and v[1] or v
-		end
-	})
+	if not self:IsExcluded("Select Config") then
+		configDropdown = PrestineLib:AddDropdown({
+			Tab = "Config",
+			MainTitle = "Select Config",
+			ChoiceList = getConfigs(),
+			DefaultChoice = "Default",
+			Multiple = false,
+			Callback = function(v)
+				selectedConfig = typeof(v) == "table" and v[1] or v
+			end
+		})
+	end
 
-	PrestineLib:AddInput({
-		Tab = "Config",
-		MainTitle = "Config Name",
-		PlaceHolder = "Enter config name...",
-		Callback = function(v)
-			configNameInput = v
-		end
-	})
+	if not self:IsExcluded("Config Name") then
+		PrestineLib:AddInput({
+			Tab = "Config",
+			MainTitle = "Config Name",
+			PlaceHolder = "Enter config name...",
+			Callback = function(v)
+				configNameInput = v
+			end
+		})
+	end
 
 	local function refreshDropdown()
 		pcall(function()
@@ -1113,72 +1205,84 @@ function PrestineManager:SetupConfig(PrestineLib)
 		end)
 	end
 
-	PrestineLib:AddButton({
-		Tab = "Config",
-		MainName = "Create / Save Config",
-		Callback = function()
-			if configNameInput and configNameInput ~= "" then
-				saveConfig(configNameInput)
-				refreshDropdown()
-				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Saved " .. configNameInput, Duration = 3 })
-			end
-		end
-	})
-
-	PrestineLib:AddButton({
-		Tab = "Config",
-		MainName = "Overwrite Selected Config",
-		Callback = function()
-			if selectedConfig and selectedConfig ~= "" then
-				saveConfig(selectedConfig)
-				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 })
-			end
-		end
-	})
-
-	PrestineLib:AddButton({
-		Tab = "Config",
-		MainName = "Load Selected Config",
-		Callback = function()
-			if selectedConfig and selectedConfig ~= "" then
-				if loadConfig(selectedConfig) then
-					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Loaded " .. selectedConfig, Duration = 3 })
-				else
-					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Failed to load", Duration = 3 })
+	if not self:IsExcluded("Create / Save Config") then
+		PrestineLib:AddButton({
+			Tab = "Config",
+			MainName = "Create / Save Config",
+			Callback = function()
+				if configNameInput and configNameInput ~= "" then
+					saveConfig(configNameInput)
+					refreshDropdown()
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Saved " .. configNameInput, Duration = 3 })
 				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Config",
-		MainName = "Delete Selected Config",
-		Callback = function()
-			if selectedConfig and selectedConfig ~= "" then
-				deleteConfig(selectedConfig)
-				refreshDropdown()
-				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 })
+	if not self:IsExcluded("Overwrite Selected Config") then
+		PrestineLib:AddButton({
+			Tab = "Config",
+			MainName = "Overwrite Selected Config",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					saveConfig(selectedConfig)
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 })
+				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddButton({
-		Tab = "Config",
-		MainName = "Set As Autoload",
-		Callback = function()
-			if selectedConfig and selectedConfig ~= "" then
-				initFolders()
-				pcall(function() writefile(autoloadFile, selectedConfig) end)
-				PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 })
+	if not self:IsExcluded("Load Selected Config") then
+		PrestineLib:AddButton({
+			Tab = "Config",
+			MainName = "Load Selected Config",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					if loadConfig(selectedConfig) then
+						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Loaded " .. selectedConfig, Duration = 3 })
+					else
+						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Failed to load", Duration = 3 })
+					end
+				end
 			end
-		end
-	})
+		})
+	end
 
-	PrestineLib:AddSaveToggle({
-		Tab = "Config",
-		MainName = "Auto Save Component Toggles",
-		DefaultState = true
-	})
+	if not self:IsExcluded("Delete Selected Config") then
+		PrestineLib:AddButton({
+			Tab = "Config",
+			MainName = "Delete Selected Config",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					deleteConfig(selectedConfig)
+					refreshDropdown()
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 })
+				end
+			end
+		})
+	end
+
+	if not self:IsExcluded("Set As Autoload") then
+		PrestineLib:AddButton({
+			Tab = "Config",
+			MainName = "Set As Autoload",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					initFolders()
+					pcall(function() writefile(autoloadFile, selectedConfig) end)
+					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 })
+				end
+			end
+		})
+	end
+
+	if not self:IsExcluded("Auto Save Component Toggles") then
+		PrestineLib:AddSaveToggle({
+			Tab = "Config",
+			MainName = "Auto Save Component Toggles",
+			DefaultState = true
+		})
+	end
 
 	task.spawn(function()
 		pcall(function()
@@ -1194,15 +1298,18 @@ function PrestineManager:SetupConfig(PrestineLib)
 	end)
 end
 
-function PrestineManager:Init(PrestineLib)
+function PrestineManager:Init(PrestineLib, options)
+	self._initOptions = options or {}
+	local tabsToInit = self._initOptions.Tabs or { "Home", "Player", "Performance", "Utility", "Settings", "Config" }
+	
 	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
 
-	self:SetupHome(PrestineLib)
-	self:SetupPlayer(PrestineLib)
-	self:SetupPerformance(PrestineLib)
-	self:SetupUtility(PrestineLib)
-	self:SetupSettings(PrestineLib)
-	self:SetupConfig(PrestineLib)
+	if table.find(tabsToInit, "Home") then self:SetupHome(PrestineLib) end
+	if table.find(tabsToInit, "Player") then self:SetupPlayer(PrestineLib) end
+	if table.find(tabsToInit, "Performance") then self:SetupPerformance(PrestineLib) end
+	if table.find(tabsToInit, "Utility") then self:SetupUtility(PrestineLib) end
+	if table.find(tabsToInit, "Settings") then self:SetupSettings(PrestineLib) end
+	if table.find(tabsToInit, "Config") then self:SetupConfig(PrestineLib) end
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
