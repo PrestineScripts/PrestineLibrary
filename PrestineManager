@@ -190,19 +190,25 @@ local function formatUptime(seconds)
 	return table.concat(parts, " ")
 end
 
-local function getServerInfoText()
-	local serverType = "Public"
-	pcall(function()
-		if game.PrivateServerId ~= "" then
-			serverType = game.PrivateServerOwnerId ~= 0 and "Private" or "Reserved"
+-- HELPER: Fetch Subtitle Label from a Button component to update it dynamically
+local function getSubtitleLabel(btnContainer)
+	if typeof(btnContainer) == "Instance" then
+		for _, v in ipairs(btnContainer:GetChildren()) do
+			-- The subtitle text label always has TextSize 11 in Components.lua
+			if v:IsA("TextLabel") and v.TextSize == 11 then
+				return v
+			end
 		end
-	end)
+	end
+	return nil
+end
 
+local function getServerInfoText()
+	-- Removed PrivateServerId check completely to fix console warn spamming
 	return "Game Name: " .. game.Name ..
 		"\nPlace ID: " .. game.PlaceId ..
 		"\nGame ID: " .. game.GameId ..
 		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
-		"\nServer Type: " .. serverType ..
 		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
 		"\nUptime: " .. formatUptime(os.clock() - SERVER_START) ..
 		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
@@ -702,6 +708,7 @@ function PrestineManager:SetupHome(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Home",
 			MainName = "Copy YouTube",
+			SubTitle = "Copies channel link to clipboard",
 			Callback = function()
 				if setClipboard("https://www.youtube.com/@PrestineScripts") then
 					PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "YouTube link copied.", Duration = 3 })
@@ -716,6 +723,7 @@ function PrestineManager:SetupHome(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Home",
 			MainName = "Copy Discord",
+			SubTitle = "Copies invite link to clipboard",
 			Callback = function()
 				if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
 					PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "Discord link copied.", Duration = 3 })
@@ -757,6 +765,7 @@ function PrestineManager:SetupHome(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Home",
 			MainName = "Clear Queue",
+			SubTitle = "Clears all pending travel tasks",
 			Callback = function()
 				self:ClearQueue()
 				PrestineLib:AddNotification({ TitleText = "Queue", ContentText = "Successfully Cleared Queue!", Duration = 3 })
@@ -768,6 +777,7 @@ function PrestineManager:SetupHome(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Home",
 			MainName = "Cancel Movement",
+			SubTitle = "Stops current travel immediately",
 			Callback = function()
 				self:Cancel()
 				PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 })
@@ -1005,6 +1015,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Reset Character",
+			SubTitle = "Kills your character",
 			Callback = function()
 				pcall(function() getHumanoid().Health = 0 end)
 			end
@@ -1015,6 +1026,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Copy Position (CFrame)",
+			SubTitle = "Useful for scripts and macros",
 			Callback = function()
 				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -1028,6 +1040,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Copy Position (Vector3)",
+			SubTitle = "Useful for scripts and macros",
 			Callback = function()
 				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -1042,6 +1055,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
 	end
 	
+	local joinBtnSub
 	if not self:IsExcluded("Join Server Type") then
 		PrestineLib:AddDropdown({
 			Tab = "Utility",
@@ -1051,14 +1065,16 @@ function PrestineManager:SetupUtility(PrestineLib)
 			Multiple = false,
 			Callback = function(v)
 				PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
+				if joinBtnSub then joinBtnSub.Text = "Mode: " .. tostring(PrestineManager._serverJoinMode) end
 			end
 		})
 	end
 	
 	if not self:IsExcluded("Join Server") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Join Server",
+			SubTitle = "Mode: " .. tostring(PrestineManager._serverJoinMode),
 			Callback = function()
 				local server = getServerForMode(PrestineManager._serverJoinMode)
 				if server and server.id then
@@ -1066,12 +1082,14 @@ function PrestineManager:SetupUtility(PrestineLib)
 				end
 			end
 		})
+		joinBtnSub = getSubtitleLabel(btn)
 	end
 
 	if not self:IsExcluded("Rejoin Server") then
 		PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Rejoin Server",
+			SubTitle = "Teleports to the same server",
 			Callback = function()
 				TeleportService:Teleport(game.PlaceId, player)
 			end
@@ -1082,6 +1100,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 		PrestineLib:AddButton({
 			Tab = "Utility",
 			MainName = "Rejoin New Server",
+			SubTitle = "Teleports to a different server",
 			Callback = function()
 				TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
 			end
@@ -1172,6 +1191,9 @@ function PrestineManager:SetupConfig(PrestineLib)
 	local configNameInput = "Default"
 	local autoloadFile = ConfigFolder .. "/" .. game.PlaceId .. "_autoload.txt"
 
+	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub
+	local saveBtnSub
+
 	local configDropdown
 	if not self:IsExcluded("Select Config") then
 		configDropdown = PrestineLib:AddDropdown({
@@ -1182,6 +1204,11 @@ function PrestineManager:SetupConfig(PrestineLib)
 			Multiple = false,
 			Callback = function(v)
 				selectedConfig = typeof(v) == "table" and v[1] or v
+				local txt = tostring(selectedConfig)
+				if overwriteBtnSub then overwriteBtnSub.Text = "Target: " .. txt end
+				if loadBtnSub then loadBtnSub.Text = "Target: " .. txt end
+				if delBtnSub then delBtnSub.Text = "Target: " .. txt end
+				if autoBtnSub then autoBtnSub.Text = "Target: " .. txt end
 			end
 		})
 	end
@@ -1193,6 +1220,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			PlaceHolder = "Enter config name...",
 			Callback = function(v)
 				configNameInput = v
+				if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(v) end
 			end
 		})
 	end
@@ -1206,9 +1234,10 @@ function PrestineManager:SetupConfig(PrestineLib)
 	end
 
 	if not self:IsExcluded("Create / Save Config") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Create / Save Config",
+			SubTitle = "Save typed config name",
 			Callback = function()
 				if configNameInput and configNameInput ~= "" then
 					saveConfig(configNameInput)
@@ -1217,12 +1246,15 @@ function PrestineManager:SetupConfig(PrestineLib)
 				end
 			end
 		})
+		saveBtnSub = getSubtitleLabel(btn)
+		if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(configNameInput) end
 	end
 
 	if not self:IsExcluded("Overwrite Selected Config") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Overwrite Selected Config",
+			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
 					saveConfig(selectedConfig)
@@ -1230,12 +1262,14 @@ function PrestineManager:SetupConfig(PrestineLib)
 				end
 			end
 		})
+		overwriteBtnSub = getSubtitleLabel(btn)
 	end
 
 	if not self:IsExcluded("Load Selected Config") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Load Selected Config",
+			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
 					if loadConfig(selectedConfig) then
@@ -1246,12 +1280,14 @@ function PrestineManager:SetupConfig(PrestineLib)
 				end
 			end
 		})
+		loadBtnSub = getSubtitleLabel(btn)
 	end
 
 	if not self:IsExcluded("Delete Selected Config") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Delete Selected Config",
+			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
 					deleteConfig(selectedConfig)
@@ -1260,12 +1296,14 @@ function PrestineManager:SetupConfig(PrestineLib)
 				end
 			end
 		})
+		delBtnSub = getSubtitleLabel(btn)
 	end
 
 	if not self:IsExcluded("Set As Autoload") then
-		PrestineLib:AddButton({
+		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Set As Autoload",
+			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
 					initFolders()
@@ -1274,6 +1312,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 				end
 			end
 		})
+		autoBtnSub = getSubtitleLabel(btn)
 	end
 
 	if not self:IsExcluded("Auto Save Component Toggles") then
@@ -1304,12 +1343,18 @@ function PrestineManager:Init(PrestineLib, options)
 	
 	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
 
-	if table.find(tabsToInit, "Home") then self:SetupHome(PrestineLib) end
-	if table.find(tabsToInit, "Player") then self:SetupPlayer(PrestineLib) end
-	if table.find(tabsToInit, "Performance") then self:SetupPerformance(PrestineLib) end
-	if table.find(tabsToInit, "Utility") then self:SetupUtility(PrestineLib) end
-	if table.find(tabsToInit, "Settings") then self:SetupSettings(PrestineLib) end
-	if table.find(tabsToInit, "Config") then self:SetupConfig(PrestineLib) end
+	-- Make sure we don't try to add elements to a tab you haven't explicitly created
+	local Main = getgenv()._PrestineMain
+	local function hasTab(name)
+		return Main and Main:FindFirstChild(name .. "Contents") ~= nil
+	end
+
+	if table.find(tabsToInit, "Home") and hasTab("Home") then self:SetupHome(PrestineLib) end
+	if table.find(tabsToInit, "Player") and hasTab("Player") then self:SetupPlayer(PrestineLib) end
+	if table.find(tabsToInit, "Performance") and hasTab("Performance") then self:SetupPerformance(PrestineLib) end
+	if table.find(tabsToInit, "Utility") and hasTab("Utility") then self:SetupUtility(PrestineLib) end
+	if table.find(tabsToInit, "Settings") and hasTab("Settings") then self:SetupSettings(PrestineLib) end
+	if table.find(tabsToInit, "Config") and hasTab("Config") then self:SetupConfig(PrestineLib) end
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
