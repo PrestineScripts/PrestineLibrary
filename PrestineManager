@@ -12,6 +12,17 @@ local VirtualUser = game:GetService("VirtualUser")
 local player = Players.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
+-- Safe Executor Global Fallbacks for strict Luau parsing
+local getgenv = getgenv or function() return {} end
+local isfolder = isfolder or function() return false end
+local makefolder = makefolder or function() end
+local isfile = isfile or function() return false end
+local readfile = readfile or function() return "" end
+local writefile = writefile or function() end
+local listfiles = listfiles or function() return {} end
+local delfile = delfile or function() end
+local set_clipboard = setclipboard or toclipboard
+
 PrestineManager.Config = {
 	TravelMethod = "Teleport",
 	TweenSpeed = 150,
@@ -58,14 +69,6 @@ PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._infJump = false
-
-local isfolder = isfolder or function() return false end
-local makefolder = makefolder or function() end
-local isfile = isfile or function() return false end
-local readfile = readfile or function() return "" end
-local writefile = writefile or function() end
-local listfiles = listfiles or function() return {} end
-local delfile = delfile or function() end
 
 local ConfigFolder = "PrestineConfigs"
 local ConfigSubFolder = ConfigFolder .. "/" .. game.PlaceId
@@ -164,10 +167,8 @@ local function clampNumber(v, lo, hi)
 end
 
 local function setClipboard(text)
-	if setclipboard then
-		return pcall(function() setclipboard(text) end)
-	elseif toclipboard then
-		return pcall(function() toclipboard(text) end)
+	if set_clipboard then
+		return pcall(function() set_clipboard(text) end)
 	end
 	return false
 end
@@ -688,7 +689,6 @@ function PrestineManager:_bindCharacterSafety()
 	end)
 end
 
--- HELPER: Check if a component title/name is excluded
 function PrestineManager:IsExcluded(featureName)
 	if not self._initOptions or not self._initOptions.ExcludeFeatures then return false end
 	return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
@@ -1340,7 +1340,11 @@ function PrestineManager:Init(PrestineLib, options)
 	
 	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
 
-	-- Default Icons dictionary for Automatic Tab Creation
+	local Main = getgenv()._PrestineMain
+	local function hasTab(name)
+		return Main and Main:FindFirstChild(name .. "Contents") ~= nil
+	end
+
 	local defaultTabIcons = {
 		["Home"] = "Home",
 		["Player"] = "User",
@@ -1350,21 +1354,18 @@ function PrestineManager:Init(PrestineLib, options)
 		["Config"] = "Info"
 	}
 	
-	-- Automatically construct the Tabs table based on what you asked to initialize
 	local tabsToCreate = {}
 	for _, tabName in ipairs(tabsToInit) do
-		table.insert(tabsToCreate, {
-			Name = tabName,
-			Icon = defaultTabIcons[tabName] or "Info" -- Default to Info if no icon mapping exists
-		})
+		if not hasTab(tabName) then
+			table.insert(tabsToCreate, {
+				Name = tabName,
+				Icon = defaultTabIcons[tabName] or "Info"
+			})
+		end
 	end
 	
-	-- Create the tabs inside the UI
-	PrestineLib:CreateTab(tabsToCreate)
-
-	local Main = getgenv()._PrestineMain
-	local function hasTab(name)
-		return Main and Main:FindFirstChild(name .. "Contents") ~= nil
+	if #tabsToCreate > 0 then
+		PrestineLib:CreateTab(tabsToCreate)
 	end
 
 	if table.find(tabsToInit, "Home") and hasTab("Home") then self:SetupHome(PrestineLib) end
