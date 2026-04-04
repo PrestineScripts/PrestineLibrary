@@ -13,13 +13,9 @@ local player = Players.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
 local getgenv = getgenv or function() return {} end
-local isfolder = isfolder or function() return false end
-local makefolder = makefolder or function() end
 local isfile = isfile or function() return false end
 local readfile = readfile or function() return "" end
 local writefile = writefile or function() end
-local listfiles = listfiles or function() return {} end
-local delfile = delfile or function() end
 local set_clipboard = setclipboard or toclipboard
 
 PrestineManager.Config = {
@@ -705,6 +701,20 @@ function PrestineManager:SetupConfig(PrestineLib)
 		if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(configNameInput) end
 	end
 
+	if not self:IsExcluded("Overwrite Selected Config") then
+		local btn = PrestineLib:AddButton({
+			Tab = "Config", MainName = "Overwrite Selected Config", SubTitle = "Target: Default",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					PrestineLib:SaveProfile(selectedConfig)
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 }) end)
+				end
+			end
+		})
+		overwriteBtnSub = getSubtitleLabel(btn)
+		if overwriteBtnSub then overwriteBtnSub.Text = "Target: " .. tostring(selectedConfig) end
+	end
+
 	if not self:IsExcluded("Load Selected Config") then
 		local btn = PrestineLib:AddButton({
 			Tab = "Config", MainName = "Load Selected Config", SubTitle = "Target: Default",
@@ -717,6 +727,22 @@ function PrestineManager:SetupConfig(PrestineLib)
 			end
 		})
 		loadBtnSub = getSubtitleLabel(btn)
+		if loadBtnSub then loadBtnSub.Text = "Target: " .. tostring(selectedConfig) end
+	end
+
+	if not self:IsExcluded("Delete Selected Config") then
+		local btn = PrestineLib:AddButton({
+			Tab = "Config", MainName = "Delete Selected Config", SubTitle = "Target: Default",
+			Callback = function()
+				if selectedConfig and selectedConfig ~= "" then
+					PrestineLib:DeleteProfile(selectedConfig)
+					refreshDropdown()
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 }) end)
+				end
+			end
+		})
+		delBtnSub = getSubtitleLabel(btn)
+		if delBtnSub then delBtnSub.Text = "Target: " .. tostring(selectedConfig) end
 	end
 
 	if not self:IsExcluded("Set As Autoload") then
@@ -730,11 +756,15 @@ function PrestineManager:SetupConfig(PrestineLib)
 			end
 		})
 		autoBtnSub = getSubtitleLabel(btn)
+		if autoBtnSub then autoBtnSub.Text = "Target: " .. tostring(selectedConfig) end
 	end
 
-	-- Crucial Autoload Fix: Wait for the user's script to finish building UI before loading!
+	if not self:IsExcluded("Auto Save Component Toggles") then
+		PrestineLib:AddSaveToggle({ Tab = "Config", MainName = "Auto Save Component Toggles", DefaultState = true })
+	end
+
 	task.spawn(function()
-		task.wait(1.5) 
+		task.wait(1.5)
 		pcall(function()
 			if isfile(autoloadFile) then
 				local autoName = readfile(autoloadFile)
