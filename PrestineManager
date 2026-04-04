@@ -12,7 +12,6 @@ local VirtualUser = game:GetService("VirtualUser")
 local player = Players.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
--- Safe Executor Global Fallbacks for strict Luau parsing
 local getgenv = getgenv or function() return {} end
 local isfolder = isfolder or function() return false end
 local makefolder = makefolder or function() end
@@ -690,8 +689,17 @@ function PrestineManager:_bindCharacterSafety()
 end
 
 function PrestineManager:IsExcluded(featureName)
-	if not self._initOptions or not self._initOptions.ExcludeFeatures then return false end
-	return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
+	if not self._initOptions then return false end
+	
+	if self._initOptions.IncludeFeatures and type(self._initOptions.IncludeFeatures) == "table" and #self._initOptions.IncludeFeatures > 0 then
+		return table.find(self._initOptions.IncludeFeatures, featureName) == nil
+	end
+	
+	if self._initOptions.ExcludeFeatures and type(self._initOptions.ExcludeFeatures) == "table" then
+		return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
+	end
+	
+	return false
 end
 
 function PrestineManager:SetupHome(PrestineLib)
@@ -1336,8 +1344,12 @@ end
 
 function PrestineManager:Init(PrestineLib, options)
 	self._initOptions = options or {}
-	local tabsToInit = self._initOptions.Tabs or { "Home", "Player", "Performance", "Utility", "Settings", "Config" }
 	
+	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
+		local success = PrestineLib:CreateGUI(self._initOptions.GUIArgs)
+		if success == false then return end
+	end
+
 	PrestineLib:Set("PrestineHub", tostring(game.PlaceId))
 
 	local Main = getgenv()._PrestineMain
@@ -1354,7 +1366,9 @@ function PrestineManager:Init(PrestineLib, options)
 		["Config"] = "Info"
 	}
 	
+	local tabsToInit = self._initOptions.Tabs or { "Home", "Player", "Performance", "Utility", "Settings", "Config" }
 	local tabsToCreate = {}
+	
 	for _, tabName in ipairs(tabsToInit) do
 		if not hasTab(tabName) then
 			table.insert(tabsToCreate, {
