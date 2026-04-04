@@ -1192,9 +1192,11 @@ function PrestineManager:SetupConfig(PrestineLib)
 		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Management" })
 	end
 
+	_G.PrestineManagerConfig = self.Config
+
 	local selectedConfig = "Default"
 	local configNameInput = "Default"
-	local autoloadFile = ConfigFolder .. "/" .. game.PlaceId .. "_autoload.txt"
+	local autoloadFile = "PrestineHub/" .. tostring(game.PlaceId) .. "/_autoload.txt"
 
 	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub
 	local saveBtnSub
@@ -1204,7 +1206,8 @@ function PrestineManager:SetupConfig(PrestineLib)
 		configDropdown = PrestineLib:AddDropdown({
 			Tab = "Config",
 			MainTitle = "Select Config",
-			ChoiceList = getConfigs(),
+			Description = "Select a profile to load, overwrite, or delete.",
+			ChoiceList = PrestineLib:GetProfiles(),
 			DefaultChoice = "Default",
 			Multiple = false,
 			Callback = function(v)
@@ -1233,7 +1236,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 	local function refreshDropdown()
 		pcall(function()
 			if configDropdown and configDropdown.UpdateDropdown then
-				configDropdown:UpdateDropdown(getConfigs())
+				configDropdown:UpdateDropdown(PrestineLib:GetProfiles())
 			end
 		end)
 	end
@@ -1245,7 +1248,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Save typed config name",
 			Callback = function()
 				if configNameInput and configNameInput ~= "" then
-					saveConfig(configNameInput)
+					PrestineLib:SaveProfile(configNameInput)
 					refreshDropdown()
 					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Saved " .. configNameInput, Duration = 3 })
 				end
@@ -1262,7 +1265,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					saveConfig(selectedConfig)
+					PrestineLib:SaveProfile(selectedConfig)
 					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 })
 				end
 			end
@@ -1277,7 +1280,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					if loadConfig(selectedConfig) then
+					if PrestineLib:LoadProfile(selectedConfig) then
 						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Loaded " .. selectedConfig, Duration = 3 })
 					else
 						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Failed to load", Duration = 3 })
@@ -1295,7 +1298,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					deleteConfig(selectedConfig)
+					PrestineLib:DeleteProfile(selectedConfig)
 					refreshDropdown()
 					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 })
 				end
@@ -1311,7 +1314,6 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					initFolders()
 					pcall(function() writefile(autoloadFile, selectedConfig) end)
 					PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 })
 				end
@@ -1333,7 +1335,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			if isfile(autoloadFile) then
 				local autoName = readfile(autoloadFile)
 				if autoName and autoName ~= "" then
-					if loadConfig(autoName) then
+					if PrestineLib:LoadProfile(autoName) then
 						PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Auto-loaded " .. autoName, Duration = 3 })
 					end
 				end
