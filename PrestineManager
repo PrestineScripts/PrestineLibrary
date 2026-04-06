@@ -801,9 +801,20 @@ function PrestineManager:SetupPlayer(PrestineLib)
 			Multiple = false,
 			Callback = function(v)
 				local name = typeof(v) == "table" and v[1] or v
-				PrestineManager._spyTarget = Players:FindFirstChild(name)
-				if PrestineManager._spyEnabled and PrestineManager._spyTarget then
-					setCameraToPlayer(PrestineManager._spyTarget)
+				
+				-- FIX: Added safety check to prevent "Argument 1 missing or nil"
+				if name and type(name) == "string" and name ~= "None" then
+					PrestineManager._spyTarget = Players:FindFirstChild(name)
+				else
+					PrestineManager._spyTarget = nil
+				end
+
+				if PrestineManager._spyEnabled then
+					if PrestineManager._spyTarget then
+						setCameraToPlayer(PrestineManager._spyTarget)
+					else
+						resetCamera()
+					end
 				end
 			end
 		})
