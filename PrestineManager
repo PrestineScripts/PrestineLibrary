@@ -679,6 +679,10 @@ function PrestineManager:SetupHome(PrestineLib)
 		})
 	end
 
+	if not self:IsExcluded("Status & Info") then
+		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Status & Info" })
+	end
+
 	if not self:IsExcluded("Character Status") then
 		self._statusParagraph = PrestineLib:AddParagraph({
 			Tab = "Home",
@@ -704,6 +708,10 @@ function PrestineManager:SetupHome(PrestineLib)
 			paragraphSize = 90,
 			MainContent = "Loading..."
 		})
+	end
+
+	if not self:IsExcluded("Queue Management") then
+		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Queue Management" })
 	end
 
 	if not self:IsExcluded("Clear Queue") then
@@ -837,8 +845,8 @@ function PrestineManager:SetupPlayer(PrestineLib)
 end
 
 function PrestineManager:SetupPerformance(PrestineLib)
-	if not self:IsExcluded("Performance Settings") then
-		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Performance Settings" })
+	if not self:IsExcluded("Rendering Options") then
+		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Rendering Options" })
 	end
 
 	if not self:IsExcluded("Turn Off Textures") then
@@ -917,6 +925,10 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
+
+	if not self:IsExcluded("Quick Presets") then
+		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Quick Presets" })
+	end
 	
 	if not self:IsExcluded("Low Graphics Preset") then
 		PrestineLib:AddToggle({
@@ -931,8 +943,8 @@ function PrestineManager:SetupPerformance(PrestineLib)
 end
 
 function PrestineManager:SetupUtility(PrestineLib)
-	if not self:IsExcluded("Utility") then
-		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Utility" })
+	if not self:IsExcluded("General Utility") then
+		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "General Utility" })
 	end
 
 	if not self:IsExcluded("Anti AFK") then
@@ -965,6 +977,10 @@ function PrestineManager:SetupUtility(PrestineLib)
 				pcall(function() getHumanoid().Health = 0 end)
 			end
 		})
+	end
+
+	if not self:IsExcluded("Position Data") then
+		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Position Data" })
 	end
 
 	if not self:IsExcluded("Copy Position (CFrame)") then
@@ -1101,17 +1117,6 @@ function PrestineManager:SetupSettings(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Toggle UI") then
-		PrestineLib:AddKeybind({
-			Tab = "Settings",
-			MainTitle = "Toggle UI",
-			DefaultKey = Enum.KeyCode.RightShift,
-			Callback = function(key)
-				PrestineLib:SetGUIHotkey(key)
-			end
-		})
-	end
-
 	if not self:IsExcluded("Travel Queue Mode") then
 		PrestineLib:AddToggle({
 			Tab = "Settings",
@@ -1125,13 +1130,24 @@ function PrestineManager:SetupSettings(PrestineLib)
 			end
 		})
 	end
+
+	if not self:IsExcluded("Interface Settings") then
+		PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Interface Settings" })
+	end
+
+	if not self:IsExcluded("Toggle UI") then
+		PrestineLib:AddKeybind({
+			Tab = "Settings",
+			MainTitle = "Toggle UI",
+			DefaultKey = Enum.KeyCode.RightShift,
+			Callback = function(key)
+				PrestineLib:SetGUIHotkey(key)
+			end
+		})
+	end
 end
 
 function PrestineManager:SetupConfig(PrestineLib)
-	if not self:IsExcluded("Config Management") then
-		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Management" })
-	end
-
 	_G.PrestineManagerConfig = self.Config
 
 	local selectedConfig = "Default"
@@ -1140,6 +1156,10 @@ function PrestineManager:SetupConfig(PrestineLib)
 
 	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub
 	local saveBtnSub
+
+	if not self:IsExcluded("Config Selection") then
+		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Selection" })
+	end
 
 	local configDropdown
 	if not self:IsExcluded("Select Config") then
@@ -1179,6 +1199,10 @@ function PrestineManager:SetupConfig(PrestineLib)
 				configDropdown:UpdateDropdown(PrestineLib:GetProfiles())
 			end
 		end)
+	end
+
+	if not self:IsExcluded("Config Operations") then
+		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Operations" })
 	end
 
 	if not self:IsExcluded("Create / Save Config") then
@@ -1245,6 +1269,10 @@ function PrestineManager:SetupConfig(PrestineLib)
 			end
 		})
 		delBtnSub = getSubtitleLabel(btn)
+	end
+
+	if not self:IsExcluded("Config Automation") then
+		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Automation" })
 	end
 
 	if not self:IsExcluded("Set As Autoload") then
