@@ -634,15 +634,15 @@ end
 
 function PrestineManager:IsExcluded(featureName)
 	if not self._initOptions then return false end
-	
+
 	if self._initOptions.IncludeFeatures and type(self._initOptions.IncludeFeatures) == "table" and #self._initOptions.IncludeFeatures > 0 then
 		return table.find(self._initOptions.IncludeFeatures, featureName) == nil
 	end
-	
+
 	if self._initOptions.ExcludeFeatures and type(self._initOptions.ExcludeFeatures) == "table" then
 		return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
 	end
-	
+
 	return false
 end
 
@@ -743,7 +743,7 @@ function PrestineManager:SetupPlayer(PrestineLib)
 	if not self:IsExcluded("Player Properties") then
 		PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
 	end
-	
+
 	if not self:IsExcluded("WalkSpeed") then
 		PrestineLib:AddSlider({
 			Tab = "Player",
@@ -757,7 +757,7 @@ function PrestineManager:SetupPlayer(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Jump Power") then
 		PrestineLib:AddSlider({
 			Tab = "Player",
@@ -801,8 +801,7 @@ function PrestineManager:SetupPlayer(PrestineLib)
 			Multiple = false,
 			Callback = function(v)
 				local name = typeof(v) == "table" and v[1] or v
-				
-				-- FIX: Added safety check to prevent "Argument 1 missing or nil"
+
 				if name and type(name) == "string" and name ~= "None" then
 					PrestineManager._spyTarget = Players:FindFirstChild(name)
 				else
@@ -870,7 +869,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Turn Off Effects") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -881,7 +880,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Turn Off Lighting") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -892,7 +891,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Turn Off Fog") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -903,7 +902,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Disable Shadows") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -914,7 +913,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Reduce Render Distance") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -925,7 +924,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Disable Water Effects") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -940,7 +939,7 @@ function PrestineManager:SetupPerformance(PrestineLib)
 	if not self:IsExcluded("Quick Presets") then
 		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Quick Presets" })
 	end
-	
+
 	if not self:IsExcluded("Low Graphics Preset") then
 		PrestineLib:AddToggle({
 			Tab = "Performance",
@@ -1026,7 +1025,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 	if not self:IsExcluded("Server Hop") then
 		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
 	end
-	
+
 	local joinBtnSub
 	if not self:IsExcluded("Join Server Type") then
 		PrestineLib:AddDropdown({
@@ -1036,12 +1035,13 @@ function PrestineManager:SetupUtility(PrestineLib)
 			DefaultChoice = "Lowest",
 			Multiple = false,
 			Callback = function(v)
-				PrestineManager._serverJoinMode = typeof(v) == "table" and v[1] or v
+				local val = typeof(v) == "table" and v[1] or v
+				PrestineManager._serverJoinMode = tostring(val or "Lowest")
 				if joinBtnSub then joinBtnSub.Text = "Mode: " .. tostring(PrestineManager._serverJoinMode) end
 			end
 		})
 	end
-	
+
 	if not self:IsExcluded("Join Server") then
 		local btn = PrestineLib:AddButton({
 			Tab = "Utility",
@@ -1159,35 +1159,171 @@ function PrestineManager:SetupSettings(PrestineLib)
 end
 
 function PrestineManager:SetupConfig(PrestineLib)
+	if not PrestineLib.gameFolderPath then
+		PrestineLib:AddParagraph({
+			Tab = "Config",
+			MainTitle = "Config Unavailable",
+			paragraphSize = 80,
+			MainContent = "Call PrestineLib:Set(hubName, gameName) before Init to enable config saving and loading."
+		})
+		return
+	end
+
 	_G.PrestineManagerConfig = self.Config
 
+	local localPath = PrestineLib.gameFolderPath
+	local globalPath = PrestineLib.mainFolder and (PrestineLib.mainFolder .. "/_global") or nil
+
+	if globalPath then
+		pcall(function()
+			if not isfolder(globalPath) then makefolder(globalPath) end
+		end)
+	end
+
+	local configScope = "Local"
 	local selectedConfig = "Default"
 	local configNameInput = "Default"
-	local autoloadFile = (PrestineLib.gameFolderPath or "PrestineHub/Default") .. "/_autoload.txt"
 
-	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub
-	local saveBtnSub
+	local function getCurrentPath()
+		if configScope == "Global" then return globalPath end
+		return localPath
+	end
+
+	local function getProfilesForScope()
+		local path = getCurrentPath()
+		local list = {}
+		if path then
+			pcall(function()
+				for _, file in ipairs(listfiles(path)) do
+					local name = file:match("([^/\\]+)%.json$")
+					if name and not name:match("^_") then
+						table.insert(list, name)
+					end
+				end
+			end)
+		end
+		if #list == 0 then table.insert(list, "Default") end
+		return list
+	end
+
+	local function saveToScope(name)
+		local path = getCurrentPath()
+		if not path then return false end
+		local data = {}
+		for k, v in pairs(PrestineLib.data or {}) do data[k] = v end
+		if type(_G.PrestineManagerConfig) == "table" then
+			data["_ManagerConfig"] = _G.PrestineManagerConfig
+		end
+		local ok = false
+		pcall(function()
+			if not isfolder(path) then makefolder(path) end
+			local filePath = path .. "/" .. name .. ".json"
+			writefile(filePath, game:GetService("HttpService"):JSONEncode(data))
+			ok = true
+		end)
+		return ok
+	end
+
+	local function loadFromScope(name)
+		local path = getCurrentPath()
+		if not path then return false end
+		local filePath = path .. "/" .. name .. ".json"
+		local ok = false
+		pcall(function()
+			if isfile(filePath) then
+				local decoded = game:GetService("HttpService"):JSONDecode(readfile(filePath))
+				if type(decoded) == "table" then
+					PrestineLib.data = decoded
+					ok = true
+				end
+			end
+		end)
+		if ok then
+			PrestineLib._IsLoading = true
+			if PrestineLib.data["_ManagerConfig"] and type(_G.PrestineManagerConfig) == "table" then
+				for k, v in pairs(PrestineLib.data["_ManagerConfig"]) do
+					_G.PrestineManagerConfig[k] = v
+					self.Config[k] = v
+				end
+			end
+			for cname, comp in pairs(PrestineLib.Registry) do
+				local savedVal = PrestineLib.data[cname]
+				if savedVal ~= nil then
+					pcall(function() comp:Set(savedVal) end)
+				end
+			end
+			PrestineLib._IsLoading = false
+		end
+		return ok
+	end
+
+	local function deleteFromScope(name)
+		local path = getCurrentPath()
+		if not path then return end
+		pcall(function()
+			local filePath = path .. "/" .. name .. ".json"
+			if isfile(filePath) then delfile(filePath) end
+		end)
+	end
+
+	local configDropdown
+	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub, saveBtnSub
+
+	local function refreshDropdown()
+		pcall(function()
+			if configDropdown and configDropdown.UpdateDropdown then
+				task.wait(0.1)
+				configDropdown:UpdateDropdown(getProfilesForScope())
+			end
+		end)
+	end
+
+	local function updateAllTargetLabels()
+		local txt = tostring(selectedConfig)
+		if overwriteBtnSub then overwriteBtnSub.Text = "Target: " .. txt end
+		if loadBtnSub then loadBtnSub.Text = "Target: " .. txt end
+		if delBtnSub then delBtnSub.Text = "Target: " .. txt end
+		if autoBtnSub then autoBtnSub.Text = "Target: " .. txt end
+	end
+
+	if not self:IsExcluded("Config Scope") then
+		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Scope" })
+	end
+
+	if not self:IsExcluded("Scope") then
+		PrestineLib:AddDropdown({
+			Tab = "Config",
+			MainTitle = "Scope",
+			Description = "Global = shared across all games.  Local = this game only.",
+			ChoiceList = { "Local", "Global" },
+			DefaultChoice = "Local",
+			Multiple = false,
+			Callback = function(v)
+				local val = typeof(v) == "table" and v[1] or v
+				configScope = tostring(val or "Local")
+				selectedConfig = "Default"
+				updateAllTargetLabels()
+				refreshDropdown()
+			end
+		})
+	end
 
 	if not self:IsExcluded("Config Selection") then
 		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Selection" })
 	end
 
-	local configDropdown
 	if not self:IsExcluded("Select Config") then
 		configDropdown = PrestineLib:AddDropdown({
 			Tab = "Config",
 			MainTitle = "Select Config",
-			Description = "Select a profile to load, overwrite, or delete.",
-			ChoiceList = PrestineLib:GetProfiles(),
+			Description = "Pick a config from the current scope.",
+			ChoiceList = getProfilesForScope(),
 			DefaultChoice = "Default",
 			Multiple = false,
 			Callback = function(v)
-				selectedConfig = typeof(v) == "table" and v[1] or v
-				local txt = tostring(selectedConfig)
-				if overwriteBtnSub then overwriteBtnSub.Text = "Target: " .. txt end
-				if loadBtnSub then loadBtnSub.Text = "Target: " .. txt end
-				if delBtnSub then delBtnSub.Text = "Target: " .. txt end
-				if autoBtnSub then autoBtnSub.Text = "Target: " .. txt end
+				local val = typeof(v) == "table" and v[1] or v
+				selectedConfig = tostring(val or "Default")
+				updateAllTargetLabels()
 			end
 		})
 	end
@@ -1198,18 +1334,12 @@ function PrestineManager:SetupConfig(PrestineLib)
 			MainTitle = "Config Name",
 			PlaceHolder = "Enter config name...",
 			Callback = function(v)
-				configNameInput = v
-				if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(v) end
+				if v and v ~= "" then
+					configNameInput = v
+					if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(v) end
+				end
 			end
 		})
-	end
-
-	local function refreshDropdown()
-		pcall(function()
-			if configDropdown and configDropdown.UpdateDropdown then
-				configDropdown:UpdateDropdown(PrestineLib:GetProfiles())
-			end
-		end)
 	end
 
 	if not self:IsExcluded("Config Operations") then
@@ -1220,17 +1350,18 @@ function PrestineManager:SetupConfig(PrestineLib)
 		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Create / Save Config",
-			SubTitle = "Save typed config name",
+			SubTitle = "Save As: " .. tostring(configNameInput),
 			Callback = function()
-				if configNameInput and configNameInput ~= "" then
-					PrestineLib:SaveProfile(configNameInput)
+				local name = (configNameInput and configNameInput ~= "") and configNameInput or "Default"
+				if saveToScope(name) then
 					refreshDropdown()
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Saved " .. configNameInput, Duration = 3 }) end)
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Saved: " .. name, Duration = 3 }) end)
+				else
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Save failed", Duration = 3 }) end)
 				end
 			end
 		})
 		saveBtnSub = getSubtitleLabel(btn)
-		if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(configNameInput) end
 	end
 
 	if not self:IsExcluded("Overwrite Selected Config") then
@@ -1240,8 +1371,9 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					PrestineLib:SaveProfile(selectedConfig)
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Overwrote " .. selectedConfig, Duration = 3 }) end)
+					if saveToScope(selectedConfig) then
+						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Overwrote: " .. selectedConfig, Duration = 3 }) end)
+					end
 				end
 			end
 		})
@@ -1255,10 +1387,10 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					if PrestineLib:LoadProfile(selectedConfig) then
-						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Loaded " .. selectedConfig, Duration = 3 }) end)
+					if loadFromScope(selectedConfig) then
+						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Loaded: " .. selectedConfig, Duration = 3 }) end)
 					else
-						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Failed to load", Duration = 3 }) end)
+						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "File not found in " .. configScope .. " scope", Duration = 3 }) end)
 					end
 				end
 			end
@@ -1273,9 +1405,12 @@ function PrestineManager:SetupConfig(PrestineLib)
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					PrestineLib:DeleteProfile(selectedConfig)
+					deleteFromScope(selectedConfig)
+					local deleted = selectedConfig
+					selectedConfig = "Default"
+					updateAllTargetLabels()
 					refreshDropdown()
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Deleted " .. selectedConfig, Duration = 3 }) end)
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Deleted: " .. deleted, Duration = 3 }) end)
 				end
 			end
 		})
@@ -1287,14 +1422,17 @@ function PrestineManager:SetupConfig(PrestineLib)
 	end
 
 	if not self:IsExcluded("Set As Autoload") then
+		local autoloadFile = localPath .. "/_autoload.txt"
 		local btn = PrestineLib:AddButton({
 			Tab = "Config",
 			MainName = "Set As Autoload",
 			SubTitle = "Target: " .. tostring(selectedConfig),
 			Callback = function()
 				if selectedConfig and selectedConfig ~= "" then
-					pcall(function() writefile(autoloadFile, selectedConfig) end)
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload set to " .. selectedConfig, Duration = 3 }) end)
+					pcall(function()
+						writefile(autoloadFile, configScope .. "|" .. selectedConfig)
+					end)
+					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload → [" .. configScope .. "] " .. selectedConfig, Duration = 3 }) end)
 				end
 			end
 		})
@@ -1312,10 +1450,25 @@ function PrestineManager:SetupConfig(PrestineLib)
 	task.spawn(function()
 		task.wait(1.5)
 		pcall(function()
+			local autoloadFile = localPath .. "/_autoload.txt"
 			if isfile(autoloadFile) then
-				local autoName = readfile(autoloadFile)
-				if autoName and autoName ~= "" then
-					PrestineLib:LoadProfile(autoName)
+				local raw = readfile(autoloadFile)
+				if raw and raw ~= "" then
+					local scope, name = raw:match("^([^|]+)|(.+)$")
+					if not scope then
+						scope = "Local"
+						name = raw
+					end
+					local savedScope = configScope
+					configScope = scope
+					if loadFromScope(name) then
+						if _G.PrestineManagerConfig then
+							for k, v in pairs(_G.PrestineManagerConfig) do
+								self.Config[k] = v
+							end
+						end
+					end
+					configScope = savedScope
 				end
 			end
 		end)
@@ -1324,7 +1477,7 @@ end
 
 function PrestineManager:Init(PrestineLib, options)
 	self._initOptions = options or {}
-	
+
 	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
 		local success = PrestineLib:CreateGUI(self._initOptions.GUIArgs)
 		if success == false then return end
@@ -1337,16 +1490,16 @@ function PrestineManager:Init(PrestineLib, options)
 
 	local defaultTabIcons = {
 		["Home"] = "Home",
-		["Player"] = "User",
-		["Performance"] = "Gauge",
-		["Utility"] = "Hammer",
+		["Player"] = "Player",
+		["Performance"] = "Performance",
+		["Utility"] = "Utility",
 		["Settings"] = "Settings",
 		["Config"] = "Info"
 	}
-	
+
 	local tabsToInit = self._initOptions.Tabs or { "Home", "Player", "Performance", "Utility", "Settings", "Config" }
 	local tabsToCreate = {}
-	
+
 	for _, tabName in ipairs(tabsToInit) do
 		if not hasTab(tabName) then
 			table.insert(tabsToCreate, {
@@ -1355,7 +1508,7 @@ function PrestineManager:Init(PrestineLib, options)
 			})
 		end
 	end
-	
+
 	if #tabsToCreate > 0 then
 		PrestineLib:CreateTab(tabsToCreate)
 	end
@@ -1415,7 +1568,7 @@ function PrestineManager:Init(PrestineLib, options)
 
 	if self._fpsConn then self._fpsConn:Disconnect() end
 	self._fpsConn = RunService.RenderStepped:Connect(function(dt)
-		PrestineManager._fps = math.floor(1 / dt)
+		PrestineManager._fps = math.floor(1 / math.max(dt, 0.001))
 	end)
 end
 
