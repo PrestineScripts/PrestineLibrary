@@ -37,6 +37,52 @@ PrestineManager.Profiles = {
 	}
 }
 
+-- Every tab the menu knows about, in one place. Init() and SetupTab() both read
+-- from this, so adding/removing a tab here is the only change needed anywhere.
+PrestineManager.TabRegistry = {
+	{ Name = "Home",        Icon = "Home",        Setup = "SetupHome" },
+	{ Name = "Player",      Icon = "Player",       Setup = "SetupPlayer" },
+	{ Name = "Performance", Icon = "Performance",  Setup = "SetupPerformance" },
+	{ Name = "Utility",     Icon = "Utility",      Setup = "SetupUtility" },
+	{ Name = "Settings",    Icon = "Settings",     Setup = "SetupSettings" },
+	{ Name = "Config",      Icon = "Info",         Setup = "SetupConfig" },
+}
+
+-- Reference list of every feature name you can pass to IncludeFeatures / ExcludeFeatures,
+-- grouped by the tab it lives on. Not read by any code -- just here so you don't have
+-- to go digging through each SetupX function to find the exact string to type.
+PrestineManager.KnownFeatures = {
+	Home = {
+		"Home Links", "Copy YouTube", "Copy Discord",
+		"Status & Info", "Character Status", "Server Info", "Performance",
+		"Queue Management", "Clear Queue", "Cancel Movement",
+	},
+	Player = {
+		"Player Properties", "WalkSpeed", "Jump Power", "Infinite Jump",
+		"Player Camera", "Select Player", "Enable Spy POV",
+	},
+	Performance = {
+		"Rendering Options", "Turn Off Textures", "Turn Off Effects", "Turn Off Lighting",
+		"Turn Off Fog", "Disable Shadows", "Reduce Render Distance", "Disable Water Effects",
+		"Quick Presets", "Low Graphics Preset",
+	},
+	Utility = {
+		"General Utility", "Anti AFK", "Reset Character",
+		"Position Data", "Copy Position (CFrame)", "Copy Position (Vector3)",
+		"Server Hop", "Join Server Type", "Join Server", "Rejoin Server", "Rejoin New Server",
+	},
+	Settings = {
+		"Movement Config", "Travel Method", "Tween Speed", "Teleport Delay", "Travel Queue Mode",
+		"Interface Settings", "Toggle UI",
+	},
+	Config = {
+		"Config Scope", "Scope", "Config Selection", "Select Config", "Config Name",
+		"Config Operations", "Create / Save Config", "Overwrite Selected Config",
+		"Load Selected Config", "Delete Selected Config",
+		"Config Automation", "Set As Autoload", "Auto Save Component Toggles",
+	},
+}
+
 PrestineManager.State = {
 	Busy = false,
 	CurrentTask = "Idle"
@@ -87,6 +133,11 @@ end
 
 local function getCamera()
 	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
+end
+
+local function hasTab(tabName)
+	local Main = getgenv()._PrestineMain
+	return Main and Main:FindFirstChild(tabName .. "Contents") ~= nil
 end
 
 local function toCFrame(target)
@@ -363,6 +414,15 @@ local function getServerForMode(mode)
 		cursor = data.nextPageCursor
 	end
 	return bestServer
+end
+
+function PrestineManager:GetTabEntry(name)
+	for _, entry in ipairs(self.TabRegistry) do
+		if entry.Name == name then
+			return entry
+		end
+	end
+	return nil
 end
 
 function PrestineManager:ApplyProfile(name)
@@ -644,6 +704,38 @@ function PrestineManager:IsExcluded(featureName)
 	end
 
 	return false
+end
+
+-- Set up ONE tab by name, whenever you want -- doesn't require Init and doesn't
+-- touch any other tab. Creates the tab first if it doesn't exist yet.
+--
+-- PrestineManager:SetupTab("Player", PrestineLib)
+--
+-- Pass options as a third argument to control which features on that tab show up
+-- (same rules as Init's options): 
+--   PrestineManager:SetupTab("Player", PrestineLib, { ExcludeFeatures = { "Enable Spy POV" } })
+--   PrestineManager:SetupTab("Utility", PrestineLib, { IncludeFeatures = { "Anti AFK" } })
+-- Note: options set here replace whatever was passed to Init/SetupTab last, since
+-- there's only one _initOptions shared by the whole manager.
+function PrestineManager:SetupTab(tabName, PrestineLib, options)
+	if options then
+		self._initOptions = options
+	elseif not self._initOptions then
+		self._initOptions = {}
+	end
+
+	local entry = self:GetTabEntry(tabName)
+	if not entry then
+		warn("[PrestineManager] SetupTab: unknown tab '" .. tostring(tabName) .. "'")
+		return false
+	end
+
+	if not hasTab(entry.Name) then
+		PrestineLib:CreateTab({{ Name = entry.Name, Icon = entry.Icon }})
+	end
+
+	self[entry.Setup](self, PrestineLib)
+	return true
 end
 
 function PrestineManager:SetupHome(PrestineLib)
@@ -1483,42 +1575,34 @@ function PrestineManager:Init(PrestineLib, options)
 		if success == false then return end
 	end
 
-	local Main = getgenv()._PrestineMain
-	local function hasTab(name)
-		return Main and Main:FindFirstChild(name .. "Contents") ~= nil
+	-- Which tabs get built. Defaults to everything in TabRegistry; pass
+	-- options.Tabs = {"Home", "Player"} to Init to only include those.
+	local defaultTabNames = {}
+	for _, entry in ipairs(self.TabRegistry) do
+		table.insert(defaultTabNames, entry.Name)
 	end
+	local tabsToInit = self._initOptions.Tabs or defaultTabNames
 
-	local defaultTabIcons = {
-		["Home"] = "Home",
-		["Player"] = "Player",
-		["Performance"] = "Performance",
-		["Utility"] = "Utility",
-		["Settings"] = "Settings",
-		["Config"] = "Info"
-	}
-
-	local tabsToInit = self._initOptions.Tabs or { "Home", "Player", "Performance", "Utility", "Settings", "Config" }
 	local tabsToCreate = {}
-
 	for _, tabName in ipairs(tabsToInit) do
 		if not hasTab(tabName) then
+			local entry = self:GetTabEntry(tabName)
 			table.insert(tabsToCreate, {
 				Name = tabName,
-				Icon = defaultTabIcons[tabName] or "Info"
+				Icon = entry and entry.Icon or "Info"
 			})
 		end
 	end
-
 	if #tabsToCreate > 0 then
 		PrestineLib:CreateTab(tabsToCreate)
 	end
 
-	if table.find(tabsToInit, "Home") and hasTab("Home") then self:SetupHome(PrestineLib) end
-	if table.find(tabsToInit, "Player") and hasTab("Player") then self:SetupPlayer(PrestineLib) end
-	if table.find(tabsToInit, "Performance") and hasTab("Performance") then self:SetupPerformance(PrestineLib) end
-	if table.find(tabsToInit, "Utility") and hasTab("Utility") then self:SetupUtility(PrestineLib) end
-	if table.find(tabsToInit, "Settings") and hasTab("Settings") then self:SetupSettings(PrestineLib) end
-	if table.find(tabsToInit, "Config") and hasTab("Config") then self:SetupConfig(PrestineLib) end
+	for _, tabName in ipairs(tabsToInit) do
+		local entry = self:GetTabEntry(tabName)
+		if entry and hasTab(tabName) then
+			self[entry.Setup](self, PrestineLib)
+		end
+	end
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
