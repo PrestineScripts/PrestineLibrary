@@ -114,6 +114,7 @@ PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._infJump = false
+PrestineManager._monitorsStarted = false
 
 local SERVER_START = os.clock()
 
@@ -829,6 +830,8 @@ function PrestineManager:SetupHome(PrestineLib)
 			end
 		})
 	end
+
+	self:StartMonitors()
 end
 
 function PrestineManager:SetupPlayer(PrestineLib)
@@ -1567,42 +1570,13 @@ function PrestineManager:SetupConfig(PrestineLib)
 	end)
 end
 
-function PrestineManager:Init(PrestineLib, options)
-	self._initOptions = options or {}
-
-	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
-		local success = PrestineLib:CreateGUI(self._initOptions.GUIArgs)
-		if success == false then return end
-	end
-
-	-- Which tabs get built. Defaults to everything in TabRegistry; pass
-	-- options.Tabs = {"Home", "Player"} to Init to only include those.
-	local defaultTabNames = {}
-	for _, entry in ipairs(self.TabRegistry) do
-		table.insert(defaultTabNames, entry.Name)
-	end
-	local tabsToInit = self._initOptions.Tabs or defaultTabNames
-
-	local tabsToCreate = {}
-	for _, tabName in ipairs(tabsToInit) do
-		if not hasTab(tabName) then
-			local entry = self:GetTabEntry(tabName)
-			table.insert(tabsToCreate, {
-				Name = tabName,
-				Icon = entry and entry.Icon or "Info"
-			})
-		end
-	end
-	if #tabsToCreate > 0 then
-		PrestineLib:CreateTab(tabsToCreate)
-	end
-
-	for _, tabName in ipairs(tabsToInit) do
-		local entry = self:GetTabEntry(tabName)
-		if entry and hasTab(tabName) then
-			self[entry.Setup](self, PrestineLib)
-		end
-	end
+-- Starts the Home-tab background loops: character status, server info, perf
+-- text, and fps tracking. Safe to call more than once -- only runs once ever.
+-- Called automatically at the end of SetupHome, so you don't need to call this
+-- yourself in normal use (whether Home was set up via Init or via SetupTab).
+function PrestineManager:StartMonitors()
+	if self._monitorsStarted then return end
+	self._monitorsStarted = true
 
 	if self._uiConn then self._uiConn:Disconnect() end
 	self._uiConn = RunService.Heartbeat:Connect(function()
@@ -1654,6 +1628,46 @@ function PrestineManager:Init(PrestineLib, options)
 	self._fpsConn = RunService.RenderStepped:Connect(function(dt)
 		PrestineManager._fps = math.floor(1 / math.max(dt, 0.001))
 	end)
+end
+
+function PrestineManager:Init(PrestineLib, options)
+	self._initOptions = options or {}
+
+	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
+		local success = PrestineLib:CreateGUI(self._initOptions.GUIArgs)
+		if success == false then return end
+	end
+
+	-- Which tabs get built. Defaults to everything in TabRegistry; pass
+	-- options.Tabs = {"Home", "Player"} to Init to only include those.
+	local defaultTabNames = {}
+	for _, entry in ipairs(self.TabRegistry) do
+		table.insert(defaultTabNames, entry.Name)
+	end
+	local tabsToInit = self._initOptions.Tabs or defaultTabNames
+
+	local tabsToCreate = {}
+	for _, tabName in ipairs(tabsToInit) do
+		if not hasTab(tabName) then
+			local entry = self:GetTabEntry(tabName)
+			table.insert(tabsToCreate, {
+				Name = tabName,
+				Icon = entry and entry.Icon or "Info"
+			})
+		end
+	end
+	if #tabsToCreate > 0 then
+		PrestineLib:CreateTab(tabsToCreate)
+	end
+
+	for _, tabName in ipairs(tabsToInit) do
+		local entry = self:GetTabEntry(tabName)
+		if entry and hasTab(tabName) then
+			self[entry.Setup](self, PrestineLib)
+		end
+	end
+
+	self:StartMonitors()
 end
 
 return PrestineManager
