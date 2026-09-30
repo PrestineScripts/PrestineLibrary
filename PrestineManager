@@ -8,11 +8,13 @@ local Lighting = game:GetService("Lighting")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
-local getgenv = getgenv or function() return {} end
+local fallbackEnv = {}
+local getgenv = getgenv or function() return fallbackEnv end
 local isfolder = isfolder or function() return false end
 local makefolder = makefolder or function() end
 local isfile = isfile or function() return false end
@@ -21,6 +23,8 @@ local writefile = writefile or function() end
 local listfiles = listfiles or function() return {} end
 local delfile = delfile or function() end
 local set_clipboard = setclipboard or toclipboard
+
+local VALID_METHODS = { Teleport = true, Tween = true, Walking = true }
 
 PrestineManager.Config = {
 	TravelMethod = "Teleport",
@@ -37,20 +41,15 @@ PrestineManager.Profiles = {
 	}
 }
 
--- Every tab the menu knows about, in one place. Init() and SetupTab() both read
--- from this, so adding/removing a tab here is the only change needed anywhere.
 PrestineManager.TabRegistry = {
 	{ Name = "Home",        Icon = "Home",        Setup = "SetupHome" },
-	{ Name = "Player",      Icon = "Player",       Setup = "SetupPlayer" },
-	{ Name = "Performance", Icon = "Performance",  Setup = "SetupPerformance" },
-	{ Name = "Utility",     Icon = "Utility",      Setup = "SetupUtility" },
-	{ Name = "Settings",    Icon = "Settings",     Setup = "SetupSettings" },
-	{ Name = "Config",      Icon = "Info",         Setup = "SetupConfig" },
+	{ Name = "Player",      Icon = "Player",      Setup = "SetupPlayer" },
+	{ Name = "Performance", Icon = "Performance", Setup = "SetupPerformance" },
+	{ Name = "Utility",     Icon = "Utility",     Setup = "SetupUtility" },
+	{ Name = "Settings",    Icon = "Settings",    Setup = "SetupSettings" },
+	{ Name = "Config",      Icon = "Info",        Setup = "SetupConfig" },
 }
 
--- Reference list of every feature name you can pass to IncludeFeatures / ExcludeFeatures,
--- grouped by the tab it lives on. Not read by any code -- just here so you don't have
--- to go digging through each SetupX function to find the exact string to type.
 PrestineManager.KnownFeatures = {
 	Home = {
 		"Home Links", "Copy YouTube", "Copy Discord",
@@ -99,12 +98,7 @@ PrestineManager._perfFlags = {
 	LowGraphics = false,
 }
 
-PrestineManager._original = {
-	Lighting = {},
-	Water = {},
-	Streaming = {}
-}
-
+PrestineManager._original = {}
 PrestineManager._token = 0
 PrestineManager._queue = {}
 PrestineManager._activeTween = nil
@@ -116,118 +110,115 @@ PrestineManager._antiAfk = false
 PrestineManager._infJump = false
 PrestineManager._monitorsStarted = false
 
-local SERVER_START = os.clock()
-
-local function getCharacter()
-	return player.Character or player.CharacterAdded:Wait()
-end
-
-local function getHumanoid()
-	local c = getCharacter()
-	return c:WaitForChild("Humanoid")
-end
-
-local function getHumanoidRoot()
-	local c = getCharacter()
-	return c:WaitForChild("Humanoid"), c:WaitForChild("HumanoidRootPart")
-end
-
 local function getCamera()
 	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
 end
 
+local function getHumanoid()
+	return (player.Character or player.CharacterAdded:Wait()):WaitForChild("Humanoid")
+end
+
+local function getHumanoidRoot()
+	local char = player.Character or player.CharacterAdded:Wait()
+	return char:WaitForChild("Humanoid"), char:WaitForChild("HumanoidRootPart")
+end
+
 local function hasTab(tabName)
-	local Main = getgenv()._PrestineMain
-	return Main and Main:FindFirstChild(tabName .. "Contents") ~= nil
+	local main = getgenv()._PrestineMain
+	return main ~= nil and main:FindFirstChild(tabName .. "Contents") ~= nil
 end
 
 local function toCFrame(target)
-	if typeof(target) == "CFrame" then
+	local kind = typeof(target)
+	if kind == "CFrame" then
 		return target
-	elseif typeof(target) == "Vector3" then
+	elseif kind == "Vector3" then
 		return CFrame.new(target)
-	elseif typeof(target) == "Instance" and target:IsA("BasePart") then
+	elseif kind == "Instance" and target:IsA("BasePart") then
 		return target.CFrame
 	end
 end
 
 local function isValidMethod(m)
-	return m == "Teleport" or m == "Tween" or m == "Walking"
+	return VALID_METHODS[m] == true
 end
 
 local function clampNumber(v, lo, hi)
 	local n = tonumber(v)
-	if not n then return nil end
-	return math.clamp(n, lo, hi)
+	return n and math.clamp(n, lo, hi) or nil
+end
+
+local function firstValue(v)
+	if typeof(v) == "table" then return v[1] end
+	return v
 end
 
 local function setClipboard(text)
-	if set_clipboard then
-		return pcall(function() set_clipboard(text) end)
-	end
-	return false
+	if not set_clipboard then return false end
+	local ok = pcall(set_clipboard, text)
+	return ok
+end
+
+local function notify(lib, title, text, duration)
+	pcall(function()
+		lib:AddNotification({ TitleText = title, ContentText = text, Duration = duration or 3 })
+	end)
 end
 
 local function formatUptime(seconds)
 	seconds = math.floor(seconds)
-	local s = seconds % 60
-	local m = math.floor(seconds / 60) % 60
-	local h = math.floor(seconds / 3600) % 24
-	local d = math.floor(seconds / 86400) % 7
 	local w = math.floor(seconds / 604800)
+	local d = math.floor(seconds / 86400) % 7
+	local h = math.floor(seconds / 3600) % 24
+	local m = math.floor(seconds / 60) % 60
 
 	local parts = {}
-	if w > 0 then table.insert(parts, w .. "w") end
-	if d > 0 then table.insert(parts, d .. "d") end
-	if h > 0 then table.insert(parts, h .. "h") end
-	if m > 0 then table.insert(parts, m .. "m") end
-	table.insert(parts, s .. "s")
-
+	if w > 0 then parts[#parts + 1] = w .. "w" end
+	if d > 0 then parts[#parts + 1] = d .. "d" end
+	if h > 0 then parts[#parts + 1] = h .. "h" end
+	if m > 0 then parts[#parts + 1] = m .. "m" end
+	parts[#parts + 1] = (seconds % 60) .. "s"
 	return table.concat(parts, " ")
 end
 
-local function getSubtitleLabel(btnContainer)
-	if typeof(btnContainer) == "Instance" then
-		for _, v in ipairs(btnContainer:GetChildren()) do
-			if v:IsA("TextLabel") and v.TextSize == 11 then
-				return v
-			end
+local function getSubtitleLabel(container)
+	if typeof(container) ~= "Instance" then return nil end
+	for _, v in ipairs(container:GetChildren()) do
+		if v:IsA("TextLabel") and v.TextSize == 11 then
+			return v
 		end
 	end
 	return nil
 end
 
 local function getServerInfoText()
-	return "Game Name: " .. game.Name ..
-		"\nPlace ID: " .. game.PlaceId ..
-		"\nGame ID: " .. game.GameId ..
-		"\nServer ID: " .. (game.JobId ~= "" and game.JobId or "N/A") ..
-		"\nPlayers: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers ..
-		"\nUptime: " .. formatUptime(os.clock() - SERVER_START) ..
-		"\nStreaming Enabled: " .. tostring(workspace.StreamingEnabled) ..
-		"\nGravity: " .. tostring(workspace.Gravity)
+	return string.format(
+		"Game Name: %s\nPlace ID: %s\nGame ID: %s\nServer ID: %s\nPlayers: %d/%d\nUptime: %s\nStreaming Enabled: %s\nGravity: %s",
+		game.Name, game.PlaceId, game.GameId,
+		game.JobId ~= "" and game.JobId or "N/A",
+		#Players:GetPlayers(), Players.MaxPlayers,
+		formatUptime(workspace.DistributedGameTime),
+		tostring(workspace.StreamingEnabled), tostring(workspace.Gravity)
+	)
 end
 
 local function getPerformanceText(mgr)
-	return "FPS: " .. tostring(mgr._fps) ..
-		"\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
+	return "FPS: " .. mgr._fps .. "\nPing: " .. math.floor(player:GetNetworkPing() * 1000) .. " ms"
 end
 
 local function getPlayerNames()
 	local list = {}
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= player then
-			table.insert(list, plr.Name)
+			list[#list + 1] = plr.Name
 		end
 	end
 	return list
 end
 
 local function setCameraToPlayer(plr)
-	if not plr then return end
-	local char = plr.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	local char = plr and plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		getCamera().CameraSubject = hum
 	end
@@ -235,186 +226,293 @@ end
 
 local function resetCamera()
 	local char = player.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		getCamera().CameraSubject = hum
 	end
 end
 
-local function toggleTextures(state)
+local orig = PrestineManager._original
+local applied = {}
+
+local function setTextures(state)
 	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("Decal") or inst:IsA("Texture") then
+		if inst:IsA("Decal") then
+			local saved = inst:GetAttribute("Prestine_T")
 			if state then
-				if inst:GetAttribute("Prestine_T") == nil then
-					inst:SetAttribute("Prestine_T", inst.Transparency)
-				end
+				if saved == nil then inst:SetAttribute("Prestine_T", inst.Transparency) end
 				inst.Transparency = 1
-			else
-				local t = inst:GetAttribute("Prestine_T")
-				if t ~= nil then
-					inst.Transparency = t
-					inst:SetAttribute("Prestine_T", nil)
-				end
+			elseif saved ~= nil then
+				inst.Transparency = saved
+				inst:SetAttribute("Prestine_T", nil)
 			end
 		end
 	end
 end
 
-local function toggleEffects(state)
+local function setEffects(state)
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") then
-			inst.Enabled = not state
+			local saved = inst:GetAttribute("Prestine_E")
+			if state then
+				if saved == nil then inst:SetAttribute("Prestine_E", inst.Enabled) end
+				inst.Enabled = false
+			elseif saved ~= nil then
+				inst.Enabled = saved
+				inst:SetAttribute("Prestine_E", nil)
+			end
 		end
 	end
 end
 
-local function toggleLighting(state)
-	local o = PrestineManager._original.Lighting
+local function setLighting(state)
 	if state then
-		if not o._saved then
-			o._saved = true
-			o.Brightness = Lighting.Brightness
-			o.GlobalShadows = Lighting.GlobalShadows
-			o.Ambient = Lighting.Ambient
-			o.OutdoorAmbient = Lighting.OutdoorAmbient
-			o.Post = {}
+		if not orig.Lighting then
+			local post = {}
 			for _, fx in ipairs(Lighting:GetChildren()) do
 				if fx:IsA("PostEffect") then
-					o.Post[fx] = fx.Enabled
+					post[fx] = fx.Enabled
 					fx.Enabled = false
 				end
 			end
+			orig.Lighting = {
+				Brightness = Lighting.Brightness,
+				Ambient = Lighting.Ambient,
+				OutdoorAmbient = Lighting.OutdoorAmbient,
+				Post = post,
+			}
 		end
 		Lighting.Brightness = 1
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.new(1,1,1)
-		Lighting.OutdoorAmbient = Color3.new(1,1,1)
-	else
-		if o._saved then
-			Lighting.Brightness = o.Brightness
-			Lighting.GlobalShadows = o.GlobalShadows
-			Lighting.Ambient = o.Ambient
-			Lighting.OutdoorAmbient = o.OutdoorAmbient
-			for fx, enabled in pairs(o.Post or {}) do
-				if fx then fx.Enabled = enabled end
-			end
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+	elseif orig.Lighting then
+		local o = orig.Lighting
+		Lighting.Brightness = o.Brightness
+		Lighting.Ambient = o.Ambient
+		Lighting.OutdoorAmbient = o.OutdoorAmbient
+		for fx, enabled in pairs(o.Post) do
+			if fx.Parent then fx.Enabled = enabled end
 		end
+		orig.Lighting = nil
 	end
 end
 
-local function toggleFog(state)
+local function setFog(state)
 	if state then
-		if not PrestineManager._original.Lighting._fogSaved then
-			PrestineManager._original.Lighting.FogEnd = Lighting.FogEnd
-			PrestineManager._original.Lighting.FogStart = Lighting.FogStart
-			PrestineManager._original.Lighting._fogSaved = true
+		if not orig.Fog then
+			orig.Fog = { End = Lighting.FogEnd, Start = Lighting.FogStart }
 		end
 		Lighting.FogEnd = 1e6
 		Lighting.FogStart = 1e6
-	else
-		local o = PrestineManager._original.Lighting
-		if o._fogSaved then
-			Lighting.FogEnd = o.FogEnd
-			Lighting.FogStart = o.FogStart
-		end
+	elseif orig.Fog then
+		Lighting.FogEnd = orig.Fog.End
+		Lighting.FogStart = orig.Fog.Start
+		orig.Fog = nil
 	end
 end
 
-local function toggleShadows(state)
-	local o = PrestineManager._original.Lighting
+local function setShadows(state)
 	if state then
-		if o._shadows == nil then
-			o._shadows = Lighting.GlobalShadows
+		if not orig.Shadows then
+			orig.Shadows = { Value = Lighting.GlobalShadows }
 		end
 		Lighting.GlobalShadows = false
-	else
-		if o._shadows ~= nil then
-			Lighting.GlobalShadows = o._shadows
-		end
+	elseif orig.Shadows then
+		Lighting.GlobalShadows = orig.Shadows.Value
+		orig.Shadows = nil
 	end
 end
 
-local function toggleRenderDistance(state)
+local function setRenderDistance(state)
 	if state then
-		PrestineManager._original.Streaming.Target = workspace.StreamingTargetRadius
-		PrestineManager._original.Streaming.Min = workspace.StreamingMinRadius
-		workspace.StreamingTargetRadius = 64
-		workspace.StreamingMinRadius = 64
-	else
-		if PrestineManager._original.Streaming.Target then
-			workspace.StreamingTargetRadius = PrestineManager._original.Streaming.Target
-			workspace.StreamingMinRadius = PrestineManager._original.Streaming.Min
+		if not orig.Streaming then
+			orig.Streaming = { Target = workspace.StreamingTargetRadius, Min = workspace.StreamingMinRadius }
 		end
+		workspace.StreamingMinRadius = 64
+		workspace.StreamingTargetRadius = 64
+	elseif orig.Streaming then
+		workspace.StreamingTargetRadius = orig.Streaming.Target
+		workspace.StreamingMinRadius = orig.Streaming.Min
+		orig.Streaming = nil
 	end
 end
 
-local function toggleWater(state)
+local function setWater(state)
 	if not Terrain then return end
 	if state then
-		PrestineManager._original.Water = {
-			WaveSize = Terrain.WaterWaveSize,
-			WaveSpeed = Terrain.WaterWaveSpeed,
-			Reflectance = Terrain.WaterReflectance,
-			Transparency = Terrain.WaterTransparency
-		}
+		if not orig.Water then
+			orig.Water = {
+				WaveSize = Terrain.WaterWaveSize,
+				WaveSpeed = Terrain.WaterWaveSpeed,
+				Reflectance = Terrain.WaterReflectance,
+				Transparency = Terrain.WaterTransparency,
+			}
+		end
 		Terrain.WaterWaveSize = 0
 		Terrain.WaterWaveSpeed = 0
 		Terrain.WaterReflectance = 0
 		Terrain.WaterTransparency = 1
-	else
-		local o = PrestineManager._original.Water
-		if o then
-			Terrain.WaterWaveSize = o.WaveSize or Terrain.WaterWaveSize
-			Terrain.WaterWaveSpeed = o.WaveSpeed or Terrain.WaterWaveSpeed
-			Terrain.WaterReflectance = o.Reflectance or Terrain.WaterReflectance
-			Terrain.WaterTransparency = o.Transparency or Terrain.WaterTransparency
-		end
+	elseif orig.Water then
+		local o = orig.Water
+		Terrain.WaterWaveSize = o.WaveSize
+		Terrain.WaterWaveSpeed = o.WaveSpeed
+		Terrain.WaterReflectance = o.Reflectance
+		Terrain.WaterTransparency = o.Transparency
+		orig.Water = nil
 	end
 end
 
-local function applyLowGraphics(state)
-	toggleTextures(state)
-	toggleEffects(state)
-	toggleLighting(state)
-	toggleFog(state)
-	toggleShadows(state)
-	toggleRenderDistance(state)
-	toggleWater(state)
+local perfHandlers = {
+	Textures = setTextures,
+	Effects = setEffects,
+	Lighting = setLighting,
+	Fog = setFog,
+	Shadows = setShadows,
+	RenderDistance = setRenderDistance,
+	Water = setWater,
+}
+
+local function applyPerformance()
+	local f = PrestineManager._perfFlags
+	local low = f.LowGraphics
+	local desired = {
+		Textures = f.Textures or low,
+		Effects = f.Effects or low,
+		Lighting = f.Lighting or low,
+		Fog = f.Fog or low,
+		Shadows = f.Shadows or f.Lighting or low,
+		RenderDistance = f.RenderDistance or low,
+		Water = f.Water or low,
+	}
+	for key, handler in pairs(perfHandlers) do
+		local want = desired[key]
+		if (applied[key] or false) ~= want then
+			applied[key] = want
+			handler(want)
+		end
+	end
 end
 
 local function getServerForMode(mode)
-	local placeId = game.PlaceId
-	local cursor = ""
-	local bestServer = nil
+	local base = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+	local cursor, best
 
 	for _ = 1, 5 do
-		local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100" .. (cursor ~= "" and "&cursor=" .. cursor or "")
-		local ok, res = pcall(function() return game:HttpGet(url) end)
-		if not ok then return nil end
+		local url = cursor and (base .. "&cursor=" .. cursor) or base
+		local ok, data = pcall(function()
+			return HttpService:JSONDecode(game:HttpGet(url))
+		end)
+		if not ok or type(data) ~= "table" or type(data.data) ~= "table" then
+			return best
+		end
 
-		local data = HttpService:JSONDecode(res)
 		for _, s in ipairs(data.data) do
-			if s.playing < s.maxPlayers then
+			if s.id ~= game.JobId and s.playing < s.maxPlayers then
 				if mode == "Lowest" then
-					if not bestServer or s.playing < bestServer.playing then
-						bestServer = s
-					end
-				elseif mode == "Max" then
-					if not bestServer or s.playing > bestServer.playing then
-						bestServer = s
-					end
-				elseif mode == "Full" then
-					if s.playing >= s.maxPlayers - 1 then
-						return s
-					end
+					if not best or s.playing < best.playing then best = s end
+				else
+					if mode == "Full" and s.playing >= s.maxPlayers - 1 then return s end
+					if not best or s.playing > best.playing then best = s end
 				end
 			end
 		end
-		if not data.nextPageCursor then break end
+
 		cursor = data.nextPageCursor
+		if not cursor then break end
 	end
-	return bestServer
+	return best
+end
+
+local function moveTo(hum, position, token, timeout)
+	local finished, success = false, false
+	local conn = hum.MoveToFinished:Connect(function(ok)
+		finished, success = true, ok
+	end)
+
+	hum:MoveTo(position)
+
+	local t0 = os.clock()
+	while not finished do
+		if token ~= PrestineManager._token then
+			conn:Disconnect()
+			return "cancel"
+		end
+		if os.clock() - t0 > timeout then
+			conn:Disconnect()
+			return "timeout"
+		end
+		task.wait(0.05)
+	end
+
+	conn:Disconnect()
+	return success and "ok" or "timeout"
+end
+
+local function walkTo(hum, hrp, cf, token)
+	for _ = 1, 2 do
+		local path = PathfindingService:CreatePath()
+		path:ComputeAsync(hrp.Position, cf.Position)
+		if path.Status ~= Enum.PathStatus.Success then return end
+
+		local stuck = false
+		for _, wp in ipairs(path:GetWaypoints()) do
+			if token ~= PrestineManager._token then return end
+			if wp.Action == Enum.PathWaypointAction.Jump then
+				hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+
+			local result = moveTo(hum, wp.Position, token, 3)
+			if result == "cancel" then return end
+			if result == "timeout" then
+				stuck = true
+				break
+			end
+		end
+
+		if not stuck then return end
+	end
+end
+
+local function tweenTo(mgr, hrp, cf, token)
+	local dist = (hrp.Position - cf.Position).Magnitude
+	local speed = math.max(tonumber(mgr.Config.TweenSpeed) or 1, 1)
+
+	local tween = TweenService:Create(
+		hrp,
+		TweenInfo.new(dist / speed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = cf }
+	)
+	mgr._activeTween = tween
+
+	local completed = false
+	local conn = tween.Completed:Connect(function()
+		completed = true
+	end)
+
+	local lastPos = hrp.Position
+	local lastMoveT = os.clock()
+	tween:Play()
+
+	while not completed do
+		if token ~= mgr._token then
+			pcall(function() tween:Cancel() end)
+			break
+		end
+
+		local p = hrp.Position
+		if (p - lastPos).Magnitude > 0.15 then
+			lastPos = p
+			lastMoveT = os.clock()
+		elseif os.clock() - lastMoveT > 2.5 then
+			pcall(function() tween:Cancel() end)
+			break
+		end
+
+		task.wait(0.05)
+	end
+
+	conn:Disconnect()
+	mgr._activeTween = nil
 end
 
 function PrestineManager:GetTabEntry(name)
@@ -427,9 +525,9 @@ function PrestineManager:GetTabEntry(name)
 end
 
 function PrestineManager:ApplyProfile(name)
-	local p = self.Profiles[name]
-	if not p then return end
-	for k, v in pairs(p) do
+	local profile = self.Profiles[name]
+	if not profile then return end
+	for k, v in pairs(profile) do
 		self.Config[k] = v
 	end
 	if not isValidMethod(self.Config.TravelMethod) then
@@ -440,7 +538,7 @@ end
 function PrestineManager:SetConfig(k, v)
 	if self.Config[k] == nil then return end
 	self.Config[k] = v
-	if k == "TravelMethod" and not isValidMethod(self.Config.TravelMethod) then
+	if k == "TravelMethod" and not isValidMethod(v) then
 		self.Config.TravelMethod = "Teleport"
 	end
 end
@@ -450,8 +548,10 @@ function PrestineManager:Cancel()
 	self._queue = {}
 	self.State.Busy = false
 	self.State.CurrentTask = "Cancelled"
-	if self._activeTween then pcall(function() self._activeTween:Cancel() end) end
-	self._activeTween = nil
+	if self._activeTween then
+		pcall(function() self._activeTween:Cancel() end)
+		self._activeTween = nil
+	end
 end
 
 function PrestineManager:Enqueue(target)
@@ -472,119 +572,16 @@ function PrestineManager:_travel(cf, token)
 
 	if method == "Teleport" then
 		hrp.CFrame = cf
-		local d = tonumber(self.Config.TeleportDelay) or 0
+		local delay = tonumber(self.Config.TeleportDelay) or 0
 		local t0 = os.clock()
-		while os.clock() - t0 < d do
+		while os.clock() - t0 < delay do
 			if token ~= self._token then return end
 			task.wait()
 		end
-		return
-	end
-
-	if method == "Tween" then
-		local dist = (hrp.Position - cf.Position).Magnitude
-		local speed = math.max(tonumber(self.Config.TweenSpeed) or 1, 1)
-		local dur = dist / speed
-
-		local tween = TweenService:Create(
-			hrp,
-			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ CFrame = cf }
-		)
-		self._activeTween = tween
-
-		local completed = false
-		local conn = tween.Completed:Connect(function()
-			completed = true
-		end)
-
-		local lastPos = hrp.Position
-		local lastMoveT = os.clock()
-		tween:Play()
-
-		while not completed do
-			if token ~= self._token then
-				pcall(function() tween:Cancel() end)
-				break
-			end
-
-			local p = hrp.Position
-			if (p - lastPos).Magnitude > 0.15 then
-				lastPos = p
-				lastMoveT = os.clock()
-			elseif os.clock() - lastMoveT > 2.5 then
-				pcall(function() tween:Cancel() end)
-				break
-			end
-
-			task.wait(0.05)
-		end
-
-		if conn then conn:Disconnect() end
-		self._activeTween = nil
-		return
-	end
-
-	if method == "Walking" then
-		local path = PathfindingService:CreatePath()
-		path:ComputeAsync(hrp.Position, cf.Position)
-		if path.Status ~= Enum.PathStatus.Success then return end
-
-		for _, wp in ipairs(path:GetWaypoints()) do
-			if token ~= self._token then return end
-
-			if wp.Action == Enum.PathWaypointAction.Jump then
-				hum:ChangeState(Enum.HumanoidStateType.Jumping)
-			end
-
-			local reached = false
-			local moveConn = hum.MoveToFinished:Connect(function(ok)
-				reached = ok
-			end)
-
-			hum:MoveTo(wp.Position)
-
-			local t0 = os.clock()
-			while not reached do
-				if token ~= self._token then
-					moveConn:Disconnect()
-					return
-				end
-
-				if os.clock() - t0 > 3.0 then
-					moveConn:Disconnect()
-					path:ComputeAsync(hrp.Position, cf.Position)
-					if path.Status == Enum.PathStatus.Success then
-						for _, wp2 in ipairs(path:GetWaypoints()) do
-							if token ~= self._token then return end
-							if wp2.Action == Enum.PathWaypointAction.Jump then
-								hum:ChangeState(Enum.HumanoidStateType.Jumping)
-							end
-
-							local reached2 = false
-							local c2 = hum.MoveToFinished:Connect(function()
-								reached2 = true
-							end)
-
-							hum:MoveTo(wp2.Position)
-
-							local t1 = os.clock()
-							while not reached2 do
-								if token ~= self._token or os.clock() - t1 > 3.0 then
-									c2:Disconnect()
-									return
-								end
-								task.wait(0.05)
-							end
-							c2:Disconnect()
-						end
-					end
-					return
-				end
-				task.wait(0.05)
-			end
-			moveConn:Disconnect()
-		end
+	elseif method == "Tween" then
+		tweenTo(self, hrp, cf, token)
+	else
+		walkTo(hum, hrp, cf, token)
 	end
 end
 
@@ -593,13 +590,12 @@ function PrestineManager:StartQueue()
 	self.State.Busy = true
 	self.State.CurrentTask = "Running"
 
-	task.spawn(function()
-		self._token += 1
-		local token = self._token
+	self._token += 1
+	local token = self._token
 
+	task.spawn(function()
 		while #self._queue > 0 and token == self._token do
-			local target = table.remove(self._queue, 1)
-			local cf = toCFrame(target)
+			local cf = toCFrame(table.remove(self._queue, 1))
 			if cf then
 				self:_travel(cf, token)
 			end
@@ -615,9 +611,7 @@ end
 function PrestineManager:Travel(target)
 	if self.Config.QueueMode then
 		self:Enqueue(target)
-		if not self.State.Busy then
-			self:StartQueue()
-		end
+		self:StartQueue()
 	else
 		self:Cancel()
 		self:Enqueue(target)
@@ -627,22 +621,20 @@ end
 
 function PrestineManager:CustomTravel(target, overrides)
 	overrides = overrides or {}
-	local oldMethod = self.Config.TravelMethod
-	local oldSpeed = self.Config.TweenSpeed
-	local oldDelay = self.Config.TeleportDelay
-	local oldQueue = self.Config.QueueMode
+	local cfg = self.Config
+	local oldMethod, oldSpeed, oldDelay, oldQueue = cfg.TravelMethod, cfg.TweenSpeed, cfg.TeleportDelay, cfg.QueueMode
 
 	if overrides.Method and isValidMethod(overrides.Method) then
-		self.Config.TravelMethod = overrides.Method
+		cfg.TravelMethod = overrides.Method
 	end
 	if overrides.Speed then
-		self.Config.TweenSpeed = math.max(1, tonumber(overrides.Speed) or self.Config.TweenSpeed)
+		cfg.TweenSpeed = math.max(1, tonumber(overrides.Speed) or cfg.TweenSpeed)
 	end
 	if overrides.TeleportDelay then
-		self.Config.TeleportDelay = math.max(0, tonumber(overrides.TeleportDelay) or 0)
+		cfg.TeleportDelay = math.max(0, tonumber(overrides.TeleportDelay) or 0)
 	end
 	if overrides.QueueMode ~= nil then
-		self.Config.QueueMode = overrides.QueueMode and true or false
+		cfg.QueueMode = overrides.QueueMode and true or false
 	end
 
 	self:Travel(target)
@@ -651,10 +643,7 @@ function PrestineManager:CustomTravel(target, overrides)
 		while self.State.Busy do
 			task.wait()
 		end
-		self.Config.TravelMethod = oldMethod
-		self.Config.TweenSpeed = oldSpeed
-		self.Config.TeleportDelay = oldDelay
-		self.Config.QueueMode = oldQueue
+		cfg.TravelMethod, cfg.TweenSpeed, cfg.TeleportDelay, cfg.QueueMode = oldMethod, oldSpeed, oldDelay, oldQueue
 	end)
 end
 
@@ -666,63 +655,61 @@ function PrestineManager:TravelMultiple(list)
 	self:StartQueue()
 end
 
+local function bindDeath(self, char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if not hum then return end
+	if self._deathConn then self._deathConn:Disconnect() end
+	self._deathConn = hum.Died:Connect(function()
+		self:Cancel()
+		self.State.CurrentTask = "Died"
+	end)
+end
+
 function PrestineManager:_bindCharacterSafety()
 	if self._charConn then self._charConn:Disconnect() end
-	self._charConn = player.CharacterAdded:Connect(function()
+
+	self._charConn = player.CharacterAdded:Connect(function(char)
 		self:Cancel()
 		self.State.CurrentTask = "Respawned"
+		task.spawn(bindDeath, self, char)
+		task.delay(1, function()
+			if self._spyEnabled and self._spyTarget then
+				setCameraToPlayer(self._spyTarget)
+			end
+		end)
 	end)
 
-	if self._camRespawnConn then self._camRespawnConn:Disconnect() end
-	self._camRespawnConn = player.CharacterAdded:Connect(function()
-		task.wait(1)
-		if PrestineManager._spyEnabled and PrestineManager._spyTarget then
-			setCameraToPlayer(PrestineManager._spyTarget)
-		end
-	end)
+	if player.Character then
+		task.spawn(bindDeath, self, player.Character)
+	end
+end
 
-	task.spawn(function()
-		local hum = getHumanoid()
-		if hum then
-			if self._deathConn then self._deathConn:Disconnect() end
-			self._deathConn = hum.Died:Connect(function()
-				self:Cancel()
-				self.State.CurrentTask = "Died"
-			end)
-		end
-	end)
+function PrestineManager:_setOptions(options)
+	options = options or {}
+	self._initOptions = options
+	self._includeSet, self._excludeSet = nil, nil
+
+	local include, exclude = options.IncludeFeatures, options.ExcludeFeatures
+	if type(include) == "table" and #include > 0 then
+		self._includeSet = {}
+		for _, name in ipairs(include) do self._includeSet[name] = true end
+	elseif type(exclude) == "table" then
+		self._excludeSet = {}
+		for _, name in ipairs(exclude) do self._excludeSet[name] = true end
+	end
 end
 
 function PrestineManager:IsExcluded(featureName)
-	if not self._initOptions then return false end
-
-	if self._initOptions.IncludeFeatures and type(self._initOptions.IncludeFeatures) == "table" and #self._initOptions.IncludeFeatures > 0 then
-		return table.find(self._initOptions.IncludeFeatures, featureName) == nil
-	end
-
-	if self._initOptions.ExcludeFeatures and type(self._initOptions.ExcludeFeatures) == "table" then
-		return table.find(self._initOptions.ExcludeFeatures, featureName) ~= nil
-	end
-
+	if self._includeSet then return not self._includeSet[featureName] end
+	if self._excludeSet then return self._excludeSet[featureName] == true end
 	return false
 end
 
--- Set up ONE tab by name, whenever you want -- doesn't require Init and doesn't
--- touch any other tab. Creates the tab first if it doesn't exist yet.
---
--- PrestineManager:SetupTab("Player", PrestineLib)
---
--- Pass options as a third argument to control which features on that tab show up
--- (same rules as Init's options): 
---   PrestineManager:SetupTab("Player", PrestineLib, { ExcludeFeatures = { "Enable Spy POV" } })
---   PrestineManager:SetupTab("Utility", PrestineLib, { IncludeFeatures = { "Anti AFK" } })
--- Note: options set here replace whatever was passed to Init/SetupTab last, since
--- there's only one _initOptions shared by the whole manager.
 function PrestineManager:SetupTab(tabName, PrestineLib, options)
 	if options then
-		self._initOptions = options
+		self:_setOptions(options)
 	elseif not self._initOptions then
-		self._initOptions = {}
+		self:_setOptions({})
 	end
 
 	local entry = self:GetTabEntry(tabName)
@@ -732,112 +719,74 @@ function PrestineManager:SetupTab(tabName, PrestineLib, options)
 	end
 
 	if not hasTab(entry.Name) then
-		PrestineLib:CreateTab({{ Name = entry.Name, Icon = entry.Icon }})
+		PrestineLib:CreateTab({ { Name = entry.Name, Icon = entry.Icon } })
 	end
 
 	self[entry.Setup](self, PrestineLib)
 	return true
 end
 
+local function addSection(self, lib, tab, title)
+	if not self:IsExcluded(title) then
+		lib:AddSection({ Tab = tab, MainTitle = title })
+	end
+end
+
+local function addButton(self, lib, tab, name, subtitle, callback)
+	if self:IsExcluded(name) then return nil end
+	return lib:AddButton({ Tab = tab, MainName = name, SubTitle = subtitle, Callback = callback })
+end
+
+local function addToggle(self, lib, tab, name, default, callback)
+	if self:IsExcluded(name) then return nil end
+	return lib:AddToggle({ Tab = tab, MainName = name, DefaultState = default, Callback = callback })
+end
+
+local function addParagraph(self, lib, tab, title, size)
+	if self:IsExcluded(title) then return nil end
+	return lib:AddParagraph({ Tab = tab, MainTitle = title, paragraphSize = size, MainContent = "Loading..." })
+end
+
 function PrestineManager:SetupHome(PrestineLib)
 	self:_bindCharacterSafety()
+	self._statusParagraph, self._serverStatusParagraph, self._perfParagraph = nil, nil, nil
 
-	if not self:IsExcluded("Home Links") then
-		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Home Links" })
-	end
+	addSection(self, PrestineLib, "Home", "Home Links")
 
-	if not self:IsExcluded("Copy YouTube") then
-		PrestineLib:AddButton({
-			Tab = "Home",
-			MainName = "Copy YouTube",
-			SubTitle = "Copies channel link to clipboard",
-			Callback = function()
-				if setClipboard("https://www.youtube.com/@PrestineScripts") then
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "YouTube link copied.", Duration = 3 }) end)
-				end
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Home", "Copy YouTube", "Copies channel link to clipboard", function()
+		if setClipboard("https://www.youtube.com/@PrestineScripts") then
+			notify(PrestineLib, "Link Copied!", "YouTube link copied.")
+		end
+	end)
 
-	if not self:IsExcluded("Copy Discord") then
-		PrestineLib:AddButton({
-			Tab = "Home",
-			MainName = "Copy Discord",
-			SubTitle = "Copies invite link to clipboard",
-			Callback = function()
-				if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Link Copied!", ContentText = "Discord link copied.", Duration = 3 }) end)
-				end
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Home", "Copy Discord", "Copies invite link to clipboard", function()
+		if setClipboard("https://discord.com/invite/AEmYSz6g4C") then
+			notify(PrestineLib, "Link Copied!", "Discord link copied.")
+		end
+	end)
 
-	if not self:IsExcluded("Status & Info") then
-		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Status & Info" })
-	end
+	addSection(self, PrestineLib, "Home", "Status & Info")
+	self._statusParagraph = addParagraph(self, PrestineLib, "Home", "Character Status", 140)
+	self._serverStatusParagraph = addParagraph(self, PrestineLib, "Home", "Server Info", 160)
+	self._perfParagraph = addParagraph(self, PrestineLib, "Home", "Performance", 90)
 
-	if not self:IsExcluded("Character Status") then
-		self._statusParagraph = PrestineLib:AddParagraph({
-			Tab = "Home",
-			MainTitle = "Character Status",
-			paragraphSize = 140,
-			MainContent = "Loading..."
-		})
-	end
+	addSection(self, PrestineLib, "Home", "Queue Management")
 
-	if not self:IsExcluded("Server Info") then
-		self._serverStatusParagraph = PrestineLib:AddParagraph({
-			Tab = "Home",
-			MainTitle = "Server Info",
-			paragraphSize = 160,
-			MainContent = "Loading..."
-		})
-	end
+	addButton(self, PrestineLib, "Home", "Clear Queue", "Clears all pending travel tasks", function()
+		self:ClearQueue()
+		notify(PrestineLib, "Queue", "Successfully Cleared Queue!")
+	end)
 
-	if not self:IsExcluded("Performance") then
-		self._perfParagraph = PrestineLib:AddParagraph({
-			Tab = "Home",
-			MainTitle = "Performance",
-			paragraphSize = 90,
-			MainContent = "Loading..."
-		})
-	end
-
-	if not self:IsExcluded("Queue Management") then
-		PrestineLib:AddSection({ Tab = "Home", MainTitle = "Queue Management" })
-	end
-
-	if not self:IsExcluded("Clear Queue") then
-		PrestineLib:AddButton({
-			Tab = "Home",
-			MainName = "Clear Queue",
-			SubTitle = "Clears all pending travel tasks",
-			Callback = function()
-				self:ClearQueue()
-				pcall(function() PrestineLib:AddNotification({ TitleText = "Queue", ContentText = "Successfully Cleared Queue!", Duration = 3 }) end)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Cancel Movement") then
-		PrestineLib:AddButton({
-			Tab = "Home",
-			MainName = "Cancel Movement",
-			SubTitle = "Stops current travel immediately",
-			Callback = function()
-				self:Cancel()
-				pcall(function() PrestineLib:AddNotification({ TitleText = "Movement", ContentText = "Successfully Cancelled Movement", Duration = 5 }) end)
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Home", "Cancel Movement", "Stops current travel immediately", function()
+		self:Cancel()
+		notify(PrestineLib, "Movement", "Successfully Cancelled Movement", 5)
+	end)
 
 	self:StartMonitors()
 end
 
 function PrestineManager:SetupPlayer(PrestineLib)
-	if not self:IsExcluded("Player Properties") then
-		PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Properties" })
-	end
+	addSection(self, PrestineLib, "Player", "Player Properties")
 
 	if not self:IsExcluded("WalkSpeed") then
 		PrestineLib:AddSlider({
@@ -871,41 +820,35 @@ function PrestineManager:SetupPlayer(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Infinite Jump") then
-		PrestineLib:AddToggle({
-			Tab = "Player",
-			MainName = "Infinite Jump",
-			DefaultState = false,
-			Callback = function(state)
-				PrestineManager._infJump = state
-			end
-		})
-	end
+	addToggle(self, PrestineLib, "Player", "Infinite Jump", false, function(state)
+		self._infJump = state
+	end)
 
-	if not self:IsExcluded("Player Camera") then
-		PrestineLib:AddSection({ Tab = "Player", MainTitle = "Player Camera" })
+	addSection(self, PrestineLib, "Player", "Player Camera")
+
+	local playerDropdown
+	local function dropdownNames()
+		local names = getPlayerNames()
+		return #names > 0 and names or { "None" }
 	end
 
 	if not self:IsExcluded("Select Player") then
-		local names = getPlayerNames()
-		PrestineLib:AddDropdown({
+		local names = dropdownNames()
+		self._spyTarget = Players:FindFirstChild(names[1])
+
+		playerDropdown = PrestineLib:AddDropdown({
 			Tab = "Player",
 			MainTitle = "Select Player",
 			ChoiceList = names,
-			DefaultChoice = names[1] or "None",
+			DefaultChoice = names[1],
 			Multiple = false,
 			Callback = function(v)
-				local name = typeof(v) == "table" and v[1] or v
+				local name = firstValue(v)
+				self._spyTarget = type(name) == "string" and name ~= "None" and Players:FindFirstChild(name) or nil
 
-				if name and type(name) == "string" and name ~= "None" then
-					PrestineManager._spyTarget = Players:FindFirstChild(name)
-				else
-					PrestineManager._spyTarget = nil
-				end
-
-				if PrestineManager._spyEnabled then
-					if PrestineManager._spyTarget then
-						setCameraToPlayer(PrestineManager._spyTarget)
+				if self._spyEnabled then
+					if self._spyTarget then
+						setCameraToPlayer(self._spyTarget)
 					else
 						resetCamera()
 					end
@@ -914,35 +857,47 @@ function PrestineManager:SetupPlayer(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Enable Spy POV") then
-		PrestineLib:AddToggle({
-			Tab = "Player",
-			MainName = "Enable Spy POV",
-			DefaultState = false,
-			Callback = function(state)
-				PrestineManager._spyEnabled = state
-				local cam = getCamera()
-				if not cam then return end
-				if state then
-					PrestineManager._prevCameraSubject = cam.CameraSubject
-					if PrestineManager._spyTarget then
-						setCameraToPlayer(PrestineManager._spyTarget)
-					end
-				else
-					if PrestineManager._prevCameraSubject then
-						cam.CameraSubject = PrestineManager._prevCameraSubject
-					else
-						resetCamera()
-					end
-				end
+	addToggle(self, PrestineLib, "Player", "Enable Spy POV", false, function(state)
+		self._spyEnabled = state
+		local cam = getCamera()
+		if state then
+			self._prevCameraSubject = cam.CameraSubject
+			if self._spyTarget then
+				setCameraToPlayer(self._spyTarget)
 			end
-		})
+		elseif self._prevCameraSubject then
+			cam.CameraSubject = self._prevCameraSubject
+		else
+			resetCamera()
+		end
+	end)
+
+	if self._playerAddedConn then self._playerAddedConn:Disconnect() end
+	if self._playerRemovingConn then self._playerRemovingConn:Disconnect() end
+
+	local function refreshPlayers()
+		if playerDropdown and playerDropdown.UpdateDropdown then
+			pcall(function() playerDropdown:UpdateDropdown(dropdownNames()) end)
+		end
 	end
 
-	if PrestineManager._infJumpConn then PrestineManager._infJumpConn:Disconnect() end
-	PrestineManager._infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
-		if not PrestineManager._infJump then return end
-		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	self._playerAddedConn = Players.PlayerAdded:Connect(function()
+		task.defer(refreshPlayers)
+	end)
+
+	self._playerRemovingConn = Players.PlayerRemoving:Connect(function(plr)
+		if self._spyTarget == plr then
+			self._spyTarget = nil
+			if self._spyEnabled then resetCamera() end
+		end
+		task.defer(refreshPlayers)
+	end)
+
+	if self._infJumpConn then self._infJumpConn:Disconnect() end
+	self._infJumpConn = UserInputService.JumpRequest:Connect(function()
+		if not self._infJump then return end
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if hum then
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
@@ -950,178 +905,80 @@ function PrestineManager:SetupPlayer(PrestineLib)
 end
 
 function PrestineManager:SetupPerformance(PrestineLib)
-	if not self:IsExcluded("Rendering Options") then
-		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Rendering Options" })
+	addSection(self, PrestineLib, "Performance", "Rendering Options")
+
+	local toggles = {
+		{ "Turn Off Textures", "Textures" },
+		{ "Turn Off Effects", "Effects" },
+		{ "Turn Off Lighting", "Lighting" },
+		{ "Turn Off Fog", "Fog" },
+		{ "Disable Shadows", "Shadows" },
+		{ "Reduce Render Distance", "RenderDistance" },
+		{ "Disable Water Effects", "Water" },
+	}
+
+	for _, t in ipairs(toggles) do
+		local flag = t[2]
+		addToggle(self, PrestineLib, "Performance", t[1], nil, function(state)
+			self._perfFlags[flag] = state
+			applyPerformance()
+		end)
 	end
 
-	if not self:IsExcluded("Turn Off Textures") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Turn Off Textures",
-			Callback = function(s)
-				PrestineManager._perfFlags.Textures = s
-				toggleTextures(s)
-			end
-		})
-	end
+	addSection(self, PrestineLib, "Performance", "Quick Presets")
 
-	if not self:IsExcluded("Turn Off Effects") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Turn Off Effects",
-			Callback = function(s)
-				PrestineManager._perfFlags.Effects = s
-				toggleEffects(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Turn Off Lighting") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Turn Off Lighting",
-			Callback = function(s)
-				PrestineManager._perfFlags.Lighting = s
-				toggleLighting(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Turn Off Fog") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Turn Off Fog",
-			Callback = function(s)
-				PrestineManager._perfFlags.Fog = s
-				toggleFog(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Disable Shadows") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Disable Shadows",
-			Callback = function(s)
-				PrestineManager._perfFlags.Shadows = s
-				toggleShadows(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Reduce Render Distance") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Reduce Render Distance",
-			Callback = function(s)
-				PrestineManager._perfFlags.RenderDistance = s
-				toggleRenderDistance(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Disable Water Effects") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Disable Water Effects",
-			Callback = function(s)
-				PrestineManager._perfFlags.Water = s
-				toggleWater(s)
-			end
-		})
-	end
-
-	if not self:IsExcluded("Quick Presets") then
-		PrestineLib:AddSection({ Tab = "Performance", MainTitle = "Quick Presets" })
-	end
-
-	if not self:IsExcluded("Low Graphics Preset") then
-		PrestineLib:AddToggle({
-			Tab = "Performance",
-			MainName = "Low Graphics Preset",
-			Callback = function(s)
-				PrestineManager._perfFlags.LowGraphics = s
-				applyLowGraphics(s)
-			end
-		})
-	end
+	addToggle(self, PrestineLib, "Performance", "Low Graphics Preset", nil, function(state)
+		self._perfFlags.LowGraphics = state
+		applyPerformance()
+	end)
 end
 
 function PrestineManager:SetupUtility(PrestineLib)
-	if not self:IsExcluded("General Utility") then
-		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "General Utility" })
-	end
+	addSection(self, PrestineLib, "Utility", "General Utility")
 
-	if not self:IsExcluded("Anti AFK") then
-		PrestineLib:AddToggle({
-			Tab = "Utility",
-			MainName = "Anti AFK",
-			Callback = function(state)
-				PrestineManager._antiAfk = state
-				if PrestineManager._antiAfkConn then
-					PrestineManager._antiAfkConn:Disconnect()
-					PrestineManager._antiAfkConn = nil
-				end
-				if state then
-					PrestineManager._antiAfkConn = player.Idled:Connect(function()
-						VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-						task.wait(1)
-						VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-					end)
-				end
-			end
-		})
-	end
+	addToggle(self, PrestineLib, "Utility", "Anti AFK", nil, function(state)
+		self._antiAfk = state
+		if self._antiAfkConn then
+			self._antiAfkConn:Disconnect()
+			self._antiAfkConn = nil
+		end
+		if state then
+			self._antiAfkConn = player.Idled:Connect(function()
+				local cf = getCamera().CFrame
+				VirtualUser:Button2Down(Vector2.zero, cf)
+				task.wait(1)
+				VirtualUser:Button2Up(Vector2.zero, cf)
+			end)
+		end
+	end)
 
-	if not self:IsExcluded("Reset Character") then
-		PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Reset Character",
-			SubTitle = "Kills your character",
-			Callback = function()
-				pcall(function() getHumanoid().Health = 0 end)
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Utility", "Reset Character", "Kills your character", function()
+		pcall(function() getHumanoid().Health = 0 end)
+	end)
 
-	if not self:IsExcluded("Position Data") then
-		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Position Data" })
-	end
+	addSection(self, PrestineLib, "Utility", "Position Data")
 
-	if not self:IsExcluded("Copy Position (CFrame)") then
-		PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Copy Position (CFrame)",
-			SubTitle = "Useful for scripts and macros",
-			Callback = function()
-				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					setClipboard("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
-				end
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Utility", "Copy Position (CFrame)", "Useful for scripts and macros", function()
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			setClipboard("CFrame.new(" .. tostring(hrp.CFrame) .. ")")
+		end
+	end)
 
-	if not self:IsExcluded("Copy Position (Vector3)") then
-		PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Copy Position (Vector3)",
-			SubTitle = "Useful for scripts and macros",
-			Callback = function()
-				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					local p = hrp.Position
-					setClipboard(("Vector3.new(%.2f, %.2f, %.2f)"):format(p.X, p.Y, p.Z))
-				end
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Utility", "Copy Position (Vector3)", "Useful for scripts and macros", function()
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local p = hrp.Position
+			setClipboard(string.format("Vector3.new(%.2f, %.2f, %.2f)", p.X, p.Y, p.Z))
+		end
+	end)
 
-	if not self:IsExcluded("Server Hop") then
-		PrestineLib:AddSection({ Tab = "Utility", MainTitle = "Server Hop" })
-	end
+	addSection(self, PrestineLib, "Utility", "Server Hop")
 
 	local joinBtnSub
+
 	if not self:IsExcluded("Join Server Type") then
 		PrestineLib:AddDropdown({
 			Tab = "Utility",
@@ -1130,55 +987,33 @@ function PrestineManager:SetupUtility(PrestineLib)
 			DefaultChoice = "Lowest",
 			Multiple = false,
 			Callback = function(v)
-				local val = typeof(v) == "table" and v[1] or v
-				PrestineManager._serverJoinMode = tostring(val or "Lowest")
-				if joinBtnSub then joinBtnSub.Text = "Mode: " .. tostring(PrestineManager._serverJoinMode) end
+				self._serverJoinMode = tostring(firstValue(v) or "Lowest")
+				if joinBtnSub then joinBtnSub.Text = "Mode: " .. self._serverJoinMode end
 			end
 		})
 	end
 
-	if not self:IsExcluded("Join Server") then
-		local btn = PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Join Server",
-			SubTitle = "Mode: " .. tostring(PrestineManager._serverJoinMode),
-			Callback = function()
-				local server = getServerForMode(PrestineManager._serverJoinMode)
-				if server and server.id then
-					TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
-				end
+	local joinBtn = addButton(self, PrestineLib, "Utility", "Join Server", "Mode: " .. self._serverJoinMode, function()
+		task.spawn(function()
+			local server = getServerForMode(self._serverJoinMode)
+			if server and server.id then
+				TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
 			end
-		})
-		joinBtnSub = getSubtitleLabel(btn)
-	end
+		end)
+	end)
+	joinBtnSub = getSubtitleLabel(joinBtn)
 
-	if not self:IsExcluded("Rejoin Server") then
-		PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Rejoin Server",
-			SubTitle = "Teleports to the same server",
-			Callback = function()
-				TeleportService:Teleport(game.PlaceId, player)
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Utility", "Rejoin Server", "Teleports to the same server", function()
+		TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+	end)
 
-	if not self:IsExcluded("Rejoin New Server") then
-		PrestineLib:AddButton({
-			Tab = "Utility",
-			MainName = "Rejoin New Server",
-			SubTitle = "Teleports to a different server",
-			Callback = function()
-				TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, player)
-			end
-		})
-	end
+	addButton(self, PrestineLib, "Utility", "Rejoin New Server", "Teleports to a different server", function()
+		TeleportService:Teleport(game.PlaceId, player)
+	end)
 end
 
 function PrestineManager:SetupSettings(PrestineLib)
-	if not self:IsExcluded("Movement Config") then
-		PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Movement Config" })
-	end
+	addSection(self, PrestineLib, "Settings", "Movement Config")
 
 	if not self:IsExcluded("Travel Method") then
 		PrestineLib:AddDropdown({
@@ -1188,9 +1023,8 @@ function PrestineManager:SetupSettings(PrestineLib)
 			Multiple = false,
 			DefaultChoice = tostring(self.Config.TravelMethod),
 			Callback = function(v)
-				local m = typeof(v) == "table" and v[1] or v
-				if not isValidMethod(m) then m = "Teleport" end
-				self.Config.TravelMethod = m
+				local m = firstValue(v)
+				self.Config.TravelMethod = isValidMethod(m) and m or "Teleport"
 			end
 		})
 	end
@@ -1223,23 +1057,14 @@ function PrestineManager:SetupSettings(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Travel Queue Mode") then
-		PrestineLib:AddToggle({
-			Tab = "Settings",
-			MainName = "Travel Queue Mode",
-			DefaultState = true,
-			Callback = function(state)
-				PrestineManager.Config.QueueMode = state
-				if not state then
-					PrestineManager:Cancel()
-				end
-			end
-		})
-	end
+	addToggle(self, PrestineLib, "Settings", "Travel Queue Mode", self.Config.QueueMode, function(state)
+		self.Config.QueueMode = state
+		if not state then
+			self:Cancel()
+		end
+	end)
 
-	if not self:IsExcluded("Interface Settings") then
-		PrestineLib:AddSection({ Tab = "Settings", MainTitle = "Interface Settings" })
-	end
+	addSection(self, PrestineLib, "Settings", "Interface Settings")
 
 	if not self:IsExcluded("Toggle UI") then
 		PrestineLib:AddKeybind({
@@ -1268,6 +1093,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 
 	local localPath = PrestineLib.gameFolderPath
 	local globalPath = PrestineLib.mainFolder and (PrestineLib.mainFolder .. "/_global") or nil
+	local autoloadFile = localPath .. "/_autoload.txt"
 
 	if globalPath then
 		pcall(function()
@@ -1280,8 +1106,12 @@ function PrestineManager:SetupConfig(PrestineLib)
 	local configNameInput = "Default"
 
 	local function getCurrentPath()
-		if configScope == "Global" then return globalPath end
-		return localPath
+		return configScope == "Global" and globalPath or localPath
+	end
+
+	local function sanitize(name)
+		name = tostring(name or ""):gsub("[^%w%-_ ]", ""):match("^%s*(.-)%s*$")
+		return name ~= "" and name or "Default"
 	end
 
 	local function getProfilesForScope()
@@ -1291,72 +1121,73 @@ function PrestineManager:SetupConfig(PrestineLib)
 			pcall(function()
 				for _, file in ipairs(listfiles(path)) do
 					local name = file:match("([^/\\]+)%.json$")
-					if name and not name:match("^_") then
-						table.insert(list, name)
+					if name and name:sub(1, 1) ~= "_" then
+						list[#list + 1] = name
 					end
 				end
 			end)
 		end
-		if #list == 0 then table.insert(list, "Default") end
+		if #list == 0 then list[1] = "Default" end
 		return list
 	end
 
 	local function saveToScope(name)
 		local path = getCurrentPath()
 		if not path then return false end
+
 		local data = {}
 		for k, v in pairs(PrestineLib.data or {}) do data[k] = v end
-		if type(_G.PrestineManagerConfig) == "table" then
-			data["_ManagerConfig"] = _G.PrestineManagerConfig
-		end
-		local ok = false
-		pcall(function()
+		data._ManagerConfig = self.Config
+
+		return (pcall(function()
 			if not isfolder(path) then makefolder(path) end
-			local filePath = path .. "/" .. name .. ".json"
-			writefile(filePath, game:GetService("HttpService"):JSONEncode(data))
-			ok = true
-		end)
-		return ok
+			writefile(path .. "/" .. sanitize(name) .. ".json", HttpService:JSONEncode(data))
+		end))
 	end
 
 	local function loadFromScope(name)
 		local path = getCurrentPath()
 		if not path then return false end
-		local filePath = path .. "/" .. name .. ".json"
-		local ok = false
+
+		local filePath = path .. "/" .. sanitize(name) .. ".json"
+		local decoded
 		pcall(function()
 			if isfile(filePath) then
-				local decoded = game:GetService("HttpService"):JSONDecode(readfile(filePath))
-				if type(decoded) == "table" then
-					PrestineLib.data = decoded
-					ok = true
-				end
+				decoded = HttpService:JSONDecode(readfile(filePath))
 			end
 		end)
-		if ok then
-			PrestineLib._IsLoading = true
-			if PrestineLib.data["_ManagerConfig"] and type(_G.PrestineManagerConfig) == "table" then
-				for k, v in pairs(PrestineLib.data["_ManagerConfig"]) do
-					_G.PrestineManagerConfig[k] = v
+		if type(decoded) ~= "table" then return false end
+
+		PrestineLib.data = decoded
+		PrestineLib._IsLoading = true
+
+		if type(decoded._ManagerConfig) == "table" then
+			for k, v in pairs(decoded._ManagerConfig) do
+				if self.Config[k] ~= nil then
 					self.Config[k] = v
 				end
 			end
-			for cname, comp in pairs(PrestineLib.Registry) do
-				local savedVal = PrestineLib.data[cname]
-				if savedVal ~= nil then
-					pcall(function() comp:Set(savedVal) end)
-				end
+			if not isValidMethod(self.Config.TravelMethod) then
+				self.Config.TravelMethod = "Teleport"
 			end
-			PrestineLib._IsLoading = false
 		end
-		return ok
+
+		for cname, comp in pairs(PrestineLib.Registry or {}) do
+			local savedVal = decoded[cname]
+			if savedVal ~= nil then
+				pcall(function() comp:Set(savedVal) end)
+			end
+		end
+
+		PrestineLib._IsLoading = false
+		return true
 	end
 
 	local function deleteFromScope(name)
 		local path = getCurrentPath()
 		if not path then return end
 		pcall(function()
-			local filePath = path .. "/" .. name .. ".json"
+			local filePath = path .. "/" .. sanitize(name) .. ".json"
 			if isfile(filePath) then delfile(filePath) end
 		end)
 	end
@@ -1365,25 +1196,21 @@ function PrestineManager:SetupConfig(PrestineLib)
 	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub, saveBtnSub
 
 	local function refreshDropdown()
-		pcall(function()
-			if configDropdown and configDropdown.UpdateDropdown then
-				task.wait(0.1)
-				configDropdown:UpdateDropdown(getProfilesForScope())
-			end
-		end)
+		if configDropdown and configDropdown.UpdateDropdown then
+			task.delay(0.1, function()
+				pcall(function() configDropdown:UpdateDropdown(getProfilesForScope()) end)
+			end)
+		end
 	end
 
 	local function updateAllTargetLabels()
-		local txt = tostring(selectedConfig)
-		if overwriteBtnSub then overwriteBtnSub.Text = "Target: " .. txt end
-		if loadBtnSub then loadBtnSub.Text = "Target: " .. txt end
-		if delBtnSub then delBtnSub.Text = "Target: " .. txt end
-		if autoBtnSub then autoBtnSub.Text = "Target: " .. txt end
+		local txt = "Target: " .. tostring(selectedConfig)
+		for _, label in ipairs({ overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub }) do
+			label.Text = txt
+		end
 	end
 
-	if not self:IsExcluded("Config Scope") then
-		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Scope" })
-	end
+	addSection(self, PrestineLib, "Config", "Config Scope")
 
 	if not self:IsExcluded("Scope") then
 		PrestineLib:AddDropdown({
@@ -1394,8 +1221,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			DefaultChoice = "Local",
 			Multiple = false,
 			Callback = function(v)
-				local val = typeof(v) == "table" and v[1] or v
-				configScope = tostring(val or "Local")
+				configScope = firstValue(v) == "Global" and "Global" or "Local"
 				selectedConfig = "Default"
 				updateAllTargetLabels()
 				refreshDropdown()
@@ -1403,9 +1229,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Config Selection") then
-		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Selection" })
-	end
+	addSection(self, PrestineLib, "Config", "Config Selection")
 
 	if not self:IsExcluded("Select Config") then
 		configDropdown = PrestineLib:AddDropdown({
@@ -1416,8 +1240,7 @@ function PrestineManager:SetupConfig(PrestineLib)
 			DefaultChoice = "Default",
 			Multiple = false,
 			Callback = function(v)
-				local val = typeof(v) == "table" and v[1] or v
-				selectedConfig = tostring(val or "Default")
+				selectedConfig = tostring(firstValue(v) or "Default")
 				updateAllTargetLabels()
 			end
 		})
@@ -1437,102 +1260,49 @@ function PrestineManager:SetupConfig(PrestineLib)
 		})
 	end
 
-	if not self:IsExcluded("Config Operations") then
-		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Operations" })
-	end
+	addSection(self, PrestineLib, "Config", "Config Operations")
 
-	if not self:IsExcluded("Create / Save Config") then
-		local btn = PrestineLib:AddButton({
-			Tab = "Config",
-			MainName = "Create / Save Config",
-			SubTitle = "Save As: " .. tostring(configNameInput),
-			Callback = function()
-				local name = (configNameInput and configNameInput ~= "") and configNameInput or "Default"
-				if saveToScope(name) then
-					refreshDropdown()
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Saved: " .. name, Duration = 3 }) end)
-				else
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Save failed", Duration = 3 }) end)
-				end
-			end
-		})
-		saveBtnSub = getSubtitleLabel(btn)
-	end
+	saveBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Create / Save Config", "Save As: " .. configNameInput, function()
+		local name = sanitize(configNameInput)
+		if saveToScope(name) then
+			refreshDropdown()
+			notify(PrestineLib, "Config", "[" .. configScope .. "] Saved: " .. name)
+		else
+			notify(PrestineLib, "Config", "Save failed")
+		end
+	end))
 
-	if not self:IsExcluded("Overwrite Selected Config") then
-		local btn = PrestineLib:AddButton({
-			Tab = "Config",
-			MainName = "Overwrite Selected Config",
-			SubTitle = "Target: " .. tostring(selectedConfig),
-			Callback = function()
-				if selectedConfig and selectedConfig ~= "" then
-					if saveToScope(selectedConfig) then
-						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Overwrote: " .. selectedConfig, Duration = 3 }) end)
-					end
-				end
-			end
-		})
-		overwriteBtnSub = getSubtitleLabel(btn)
-	end
+	overwriteBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Overwrite Selected Config", "Target: " .. selectedConfig, function()
+		if saveToScope(selectedConfig) then
+			notify(PrestineLib, "Config", "[" .. configScope .. "] Overwrote: " .. selectedConfig)
+		end
+	end))
 
-	if not self:IsExcluded("Load Selected Config") then
-		local btn = PrestineLib:AddButton({
-			Tab = "Config",
-			MainName = "Load Selected Config",
-			SubTitle = "Target: " .. tostring(selectedConfig),
-			Callback = function()
-				if selectedConfig and selectedConfig ~= "" then
-					if loadFromScope(selectedConfig) then
-						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Loaded: " .. selectedConfig, Duration = 3 }) end)
-					else
-						pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "File not found in " .. configScope .. " scope", Duration = 3 }) end)
-					end
-				end
-			end
-		})
-		loadBtnSub = getSubtitleLabel(btn)
-	end
+	loadBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Load Selected Config", "Target: " .. selectedConfig, function()
+		if loadFromScope(selectedConfig) then
+			notify(PrestineLib, "Config", "[" .. configScope .. "] Loaded: " .. selectedConfig)
+		else
+			notify(PrestineLib, "Config", "File not found in " .. configScope .. " scope")
+		end
+	end))
 
-	if not self:IsExcluded("Delete Selected Config") then
-		local btn = PrestineLib:AddButton({
-			Tab = "Config",
-			MainName = "Delete Selected Config",
-			SubTitle = "Target: " .. tostring(selectedConfig),
-			Callback = function()
-				if selectedConfig and selectedConfig ~= "" then
-					deleteFromScope(selectedConfig)
-					local deleted = selectedConfig
-					selectedConfig = "Default"
-					updateAllTargetLabels()
-					refreshDropdown()
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "[" .. configScope .. "] Deleted: " .. deleted, Duration = 3 }) end)
-				end
-			end
-		})
-		delBtnSub = getSubtitleLabel(btn)
-	end
+	delBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Delete Selected Config", "Target: " .. selectedConfig, function()
+		local deleted = selectedConfig
+		deleteFromScope(deleted)
+		selectedConfig = "Default"
+		updateAllTargetLabels()
+		refreshDropdown()
+		notify(PrestineLib, "Config", "[" .. configScope .. "] Deleted: " .. deleted)
+	end))
 
-	if not self:IsExcluded("Config Automation") then
-		PrestineLib:AddSection({ Tab = "Config", MainTitle = "Config Automation" })
-	end
+	addSection(self, PrestineLib, "Config", "Config Automation")
 
-	if not self:IsExcluded("Set As Autoload") then
-		local autoloadFile = localPath .. "/_autoload.txt"
-		local btn = PrestineLib:AddButton({
-			Tab = "Config",
-			MainName = "Set As Autoload",
-			SubTitle = "Target: " .. tostring(selectedConfig),
-			Callback = function()
-				if selectedConfig and selectedConfig ~= "" then
-					pcall(function()
-						writefile(autoloadFile, configScope .. "|" .. selectedConfig)
-					end)
-					pcall(function() PrestineLib:AddNotification({ TitleText = "Config", ContentText = "Autoload → [" .. configScope .. "] " .. selectedConfig, Duration = 3 }) end)
-				end
-			end
-		})
-		autoBtnSub = getSubtitleLabel(btn)
-	end
+	autoBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Set As Autoload", "Target: " .. selectedConfig, function()
+		pcall(function()
+			writefile(autoloadFile, configScope .. "|" .. selectedConfig)
+		end)
+		notify(PrestineLib, "Config", "Autoload → [" .. configScope .. "] " .. selectedConfig)
+	end))
 
 	if not self:IsExcluded("Auto Save Component Toggles") then
 		PrestineLib:AddSaveToggle({
@@ -1542,118 +1312,101 @@ function PrestineManager:SetupConfig(PrestineLib)
 		})
 	end
 
-	task.spawn(function()
-		task.wait(1.5)
+	task.delay(1.5, function()
 		pcall(function()
-			local autoloadFile = localPath .. "/_autoload.txt"
-			if isfile(autoloadFile) then
-				local raw = readfile(autoloadFile)
-				if raw and raw ~= "" then
-					local scope, name = raw:match("^([^|]+)|(.+)$")
-					if not scope then
-						scope = "Local"
-						name = raw
-					end
-					local savedScope = configScope
-					configScope = scope
-					if loadFromScope(name) then
-						if _G.PrestineManagerConfig then
-							for k, v in pairs(_G.PrestineManagerConfig) do
-								self.Config[k] = v
-							end
-						end
-					end
-					configScope = savedScope
-				end
+			if not isfile(autoloadFile) then return end
+			local raw = readfile(autoloadFile)
+			if not raw or raw == "" then return end
+
+			local scope, name = raw:match("^([^|]+)|(.+)$")
+			if not scope then
+				scope, name = "Local", raw
 			end
+
+			local previous = configScope
+			configScope = scope == "Global" and "Global" or "Local"
+			loadFromScope(name)
+			configScope = previous
 		end)
 	end)
 end
 
--- Starts the Home-tab background loops: character status, server info, perf
--- text, and fps tracking. Safe to call more than once -- only runs once ever.
--- Called automatically at the end of SetupHome, so you don't need to call this
--- yourself in normal use (whether Home was set up via Init or via SetupTab).
 function PrestineManager:StartMonitors()
 	if self._monitorsStarted then return end
 	self._monitorsStarted = true
 
 	if self._uiConn then self._uiConn:Disconnect() end
-	self._uiConn = RunService.Heartbeat:Connect(function()
-		local char = player.Character
-		if not char then return end
 
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		local hrp = char:FindFirstChild("HumanoidRootPart")
-		if not hum then return end
+	local frames, fpsTimer, statusTimer, serverTimer = 0, 0, 0, 0
 
-		local statusText =
-			"Task: " .. tostring(self.State.CurrentTask) ..
-			"\nQueue: " .. #self._queue ..
-			"\nMethod: " .. self.Config.TravelMethod ..
-			"\nTweenSpeed: " .. self.Config.TweenSpeed ..
-			"\nTeleportDelay: " .. self.Config.TeleportDelay ..
-			"\nWalkSpeed: " .. hum.WalkSpeed ..
-			"\nJump: " .. (hum.UseJumpPower and hum.JumpPower or hum.JumpHeight) ..
-			"\nHealth: " .. string.format("%.0f/%.0f", hum.Health, hum.MaxHealth)
+	self._uiConn = RunService.Heartbeat:Connect(function(dt)
+		frames += 1
+		fpsTimer += dt
+		statusTimer += dt
+		serverTimer += dt
 
-		if hrp then
-			statusText ..= "\nState: " .. hum:GetState().Name .. "\nRoot Anchored: " .. tostring(hrp.Anchored)
-		end
-
-		if self._statusParagraph then
-			self._statusParagraph:SetContent(statusText)
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			task.wait(1)
-			if self._serverStatusParagraph then
-				self._serverStatusParagraph:SetContent(getServerInfoText())
-			end
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			task.wait(0.5)
+		if fpsTimer >= 0.5 then
+			self._fps = math.floor(frames / fpsTimer + 0.5)
+			frames, fpsTimer = 0, 0
 			if self._perfParagraph then
 				self._perfParagraph:SetContent(getPerformanceText(self))
 			end
 		end
-	end)
 
-	if self._fpsConn then self._fpsConn:Disconnect() end
-	self._fpsConn = RunService.RenderStepped:Connect(function(dt)
-		PrestineManager._fps = math.floor(1 / math.max(dt, 0.001))
+		if serverTimer >= 1 then
+			serverTimer = 0
+			if self._serverStatusParagraph then
+				self._serverStatusParagraph:SetContent(getServerInfoText())
+			end
+		end
+
+		if statusTimer >= 0.25 then
+			statusTimer = 0
+			if not self._statusParagraph then return end
+
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+
+			local cfg = self.Config
+			local text = string.format(
+				"Task: %s\nQueue: %d\nMethod: %s\nTweenSpeed: %s\nTeleportDelay: %s\nWalkSpeed: %g\nJump: %g\nHealth: %.0f/%.0f",
+				tostring(self.State.CurrentTask), #self._queue, cfg.TravelMethod,
+				tostring(cfg.TweenSpeed), tostring(cfg.TeleportDelay),
+				hum.WalkSpeed, hum.UseJumpPower and hum.JumpPower or hum.JumpHeight,
+				hum.Health, hum.MaxHealth
+			)
+
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				text ..= "\nState: " .. hum:GetState().Name .. "\nRoot Anchored: " .. tostring(hrp.Anchored)
+			end
+
+			self._statusParagraph:SetContent(text)
+		end
 	end)
 end
 
 function PrestineManager:Init(PrestineLib, options)
-	self._initOptions = options or {}
+	self:_setOptions(options)
 
 	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
-		local success = PrestineLib:CreateGUI(self._initOptions.GUIArgs)
-		if success == false then return end
+		if PrestineLib:CreateGUI(self._initOptions.GUIArgs) == false then return end
 	end
 
-	-- Which tabs get built. Defaults to everything in TabRegistry; pass
-	-- options.Tabs = {"Home", "Player"} to Init to only include those.
-	local defaultTabNames = {}
-	for _, entry in ipairs(self.TabRegistry) do
-		table.insert(defaultTabNames, entry.Name)
+	local tabsToInit = self._initOptions.Tabs
+	if not tabsToInit then
+		tabsToInit = {}
+		for _, entry in ipairs(self.TabRegistry) do
+			tabsToInit[#tabsToInit + 1] = entry.Name
+		end
 	end
-	local tabsToInit = self._initOptions.Tabs or defaultTabNames
 
 	local tabsToCreate = {}
 	for _, tabName in ipairs(tabsToInit) do
 		if not hasTab(tabName) then
 			local entry = self:GetTabEntry(tabName)
-			table.insert(tabsToCreate, {
-				Name = tabName,
-				Icon = entry and entry.Icon or "Info"
-			})
+			tabsToCreate[#tabsToCreate + 1] = { Name = tabName, Icon = entry and entry.Icon or "Info" }
 		end
 	end
 	if #tabsToCreate > 0 then
@@ -1666,8 +1419,6 @@ function PrestineManager:Init(PrestineLib, options)
 			self[entry.Setup](self, PrestineLib)
 		end
 	end
-
-	self:StartMonitors()
 end
 
 return PrestineManager
