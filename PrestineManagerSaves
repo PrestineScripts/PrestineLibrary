@@ -1,0 +1,273 @@
+return function(mgr, lib)
+	if type(mgr) ~= "table" or type(lib) ~= "table" then return end
+	if mgr._SavesInstalled then return end
+	mgr._SavesInstalled = true
+
+	local function firstValue(v)
+		if typeof(v) == "table" then return v[1] end
+		return v
+	end
+
+	local function notify(title, text, duration)
+		pcall(function()
+			lib:AddNotification({ TitleText = title, ContentText = text, Duration = duration or 3 })
+		end)
+	end
+
+	local function getSubtitleLabel(container)
+		if typeof(container) ~= "Instance" then return nil end
+		for _, v in ipairs(container:GetChildren()) do
+			if v:IsA("TextLabel") and v.TextSize == 11 then return v end
+		end
+		return nil
+	end
+
+	local function setText(label, text)
+		if label and label.Parent then label.Text = text end
+	end
+
+	local function timeText(t)
+		return t and os.date("%H:%M:%S", t) or "never"
+	end
+
+	if not mgr._SavesListenerBound then
+		mgr._SavesListenerBound = true
+		lib:OnConfigChanged(function()
+			if mgr._SavesRefresh then mgr._SavesRefresh() end
+		end)
+	end
+
+	function mgr:SetupConfig(PrestineLib)
+		PrestineLib = PrestineLib or lib
+		local TAB = "Config"
+
+		local scope = (lib.Active and lib.Active.Scope) or "Local"
+		local selected = (lib.Active and lib.Active.Name) or "Default"
+		local nameInput = ""
+
+		local statusParagraph
+		local configDropdown
+		local subs = {}
+
+		----------------------------------------------------------------
+		-- helpers
+		----------------------------------------------------------------
+		local function list()
+			return lib:ListConfigs(scope)
+		end
+
+		local function ensureSelectionValid()
+			local names = list()
+			if not table.find(names, selected) then selected = names[1] end
+		end
+
+		local function updateTargets()
+			local txt = "Target: [" .. scope .. "] " .. tostring(selected)
+			setText(subs.overwrite, txt)
+			setText(subs.load, txt)
+			setText(subs.delete, txt)
+			setText(subs.autoload, txt)
+			setText(subs.restore, "Restores the last backup in " .. scope)
+		end
+
+		local function updateStatus()
+			if not statusParagraph then return end
+			local active = lib.Active
+			local auto = lib:GetAutoload()
+			local text = string.format(
+				"Active: %s\nAutoload: %s\nAuto Save: %s\nUnsaved changes: %s\nLast saved: %s",
+				active and ("[" .. active.Scope .. "] " .. active.Name) or "none",
+				auto and ("[" .. auto.Scope .. "] " .. auto.Name) or "none",
+				lib.AutoSave and "On" or "Off",
+				lib.Dirty and "Yes" or "No",
+				timeText(lib.LastSaved)
+			)
+			pcall(function() statusParagraph:SetContent(text) end)
+		end
+
+		local function refreshDropdown()
+			if not (configDropdown and configDropdown.UpdateDropdown) then return end
+			ensureSelectionValid()
+			pcall(function() configDropdown:UpdateDropdown(list()) end)
+			pcall(function() if configDropdown.Set then configDropdown:Set(selected) end end)
+		end
+
+		local function refreshAll()
+			updateStatus()
+			updateTargets()
+		end
+
+		mgr._SavesRefresh = refreshAll
+
+		----------------------------------------------------------------
+		-- status
+		----------------------------------------------------------------
+		if not self:IsExcluded("Config Status") then
+			PrestineLib:AddSection({ Tab = TAB, MainTitle = "Config Status" })
+			statusParagraph = PrestineLib:AddParagraph({
+				Tab = TAB,
+				MainTitle = "Current State",
+				paragraphSize = 100,
+				MainContent = "Loading...",
+			})
+		end
+
+		----------------------------------------------------------------
+		-- scope + selection
+		----------------------------------------------------------------
+		if not self:IsExcluded("Config Scope") then
+			PrestineLib:AddSection({ Tab = TAB, MainTitle = "Config Scope" })
+		end
+
+		if not self:IsExcluded("Scope") then
+			PrestineLib:AddDropdown({
+				Tab = TAB,
+				MainTitle = "Scope",
+				Description = "Global = shared across all games.  Local = this game only.",
+				ChoiceList = { "Local", "Global" },
+				DefaultChoice = scope,
+				Multiple = false,
+				Callback = function(v)
+					scope = firstValue(v) == "Global" and "Global" or "Local"
+					if lib.Active and lib.Active.Scope == scope then
+						selected = lib.Active.Name
+					else
+						selected = "Default"
+					end
+					refreshDropdown()
+					refreshAll()
+				end,
+			})
+		end
+
+		if not self:IsExcluded("Config Selection") then
+			PrestineLib:AddSection({ Tab = TAB, MainTitle = "Config Selection" })
+		end
+
+		ensureSelectionValid()
+
+		if not self:IsExcluded("Select Config") then
+			configDropdown = PrestineLib:AddDropdown({
+				Tab = TAB,
+				MainTitle = "Select Config",
+				Description = "Pick a config from the current scope.",
+				ChoiceList = list(),
+				DefaultChoice = selected,
+				Multiple = false,
+				Callback = function(v)
+					local name = firstValue(v)
+					if type(name) == "string" and name ~= "" then
+						selected = name
+						updateTargets()
+					end
+				end,
+			})
+		end
+
+		if not self:IsExcluded("Config Name") then
+			PrestineLib:AddInput({
+				Tab = TAB,
+				MainTitle = "Config Name",
+				PlaceHolder = "Enter config name...",
+				Callback = function(v)
+					nameInput = tostring(v or "")
+					setText(subs.save, nameInput ~= "" and ("Save As: " .. lib.SanitizeConfigName(nameInput)) or "Type a name above first")
+				end,
+			})
+		end
+
+		----------------------------------------------------------------
+		-- operations
+		----------------------------------------------------------------
+		if not self:IsExcluded("Config Operations") then
+			PrestineLib:AddSection({ Tab = TAB, MainTitle = "Config Operations" })
+		end
+
+		local function button(name, subtitle, callback)
+			if self:IsExcluded(name) then return nil end
+			return PrestineLib:AddButton({ Tab = TAB, MainName = name, SubTitle = subtitle, Callback = callback })
+		end
+
+		subs.save = getSubtitleLabel(button("Create / Save Config", "Type a name above first", function()
+			if nameInput == "" then
+				notify("Config", "Enter a config name first")
+				return
+			end
+			local ok, name = lib:SaveConfig(nameInput, scope)
+			if ok then
+				selected = name
+				refreshDropdown()
+				notify("Config", "[" .. scope .. "] Saved: " .. name)
+			else
+				notify("Config", "Save failed")
+			end
+			refreshAll()
+		end))
+
+		subs.overwrite = getSubtitleLabel(button("Overwrite Selected Config", "", function()
+			local ok, name = lib:SaveConfig(selected, scope)
+			notify("Config", ok and ("[" .. scope .. "] Overwrote: " .. name) or "Save failed")
+			refreshAll()
+		end))
+
+		subs.load = getSubtitleLabel(button("Load Selected Config", "", function()
+			if lib:LoadConfig(selected, scope) then
+				notify("Config", "[" .. scope .. "] Loaded: " .. selected)
+			else
+				notify("Config", "File not found in " .. scope .. " scope")
+			end
+			refreshAll()
+		end))
+
+		subs.delete = getSubtitleLabel(button("Delete Selected Config", "", function()
+			local deleted = selected
+			lib:DeleteConfig(deleted, scope)
+			selected = "Default"
+			refreshDropdown()
+			refreshAll()
+			notify("Config", "[" .. scope .. "] Deleted: " .. deleted .. " (backup kept)")
+		end))
+
+		subs.restore = getSubtitleLabel(button("Restore Last Backup", "", function()
+			if lib:RestoreBackup(scope) then
+				notify("Config", "Backup restored. Save it to keep it.")
+			else
+				notify("Config", "No backup found in " .. scope .. " scope")
+			end
+			refreshAll()
+		end))
+
+		----------------------------------------------------------------
+		-- automation
+		----------------------------------------------------------------
+		if not self:IsExcluded("Config Automation") then
+			PrestineLib:AddSection({ Tab = TAB, MainTitle = "Config Automation" })
+		end
+
+		subs.autoload = getSubtitleLabel(button("Set As Autoload", "", function()
+			if lib:SetAutoload(selected, scope) then
+				notify("Config", "Autoload: [" .. scope .. "] " .. selected)
+			else
+				notify("Config", "Could not set autoload")
+			end
+			refreshAll()
+		end))
+
+		button("Clear Autoload", "Stops loading a config on startup", function()
+			lib:ClearAutoload()
+			notify("Config", "Autoload cleared")
+			refreshAll()
+		end)
+
+		if not self:IsExcluded("Auto Save Configuration") then
+			PrestineLib:AddSaveToggle({
+				Tab = TAB,
+				MainName = "Auto Save Configuration",
+				Description = "Saves changes to the active config automatically",
+				DefaultState = lib.AutoSave,
+			})
+		end
+
+		refreshAll()
+	end
+end
