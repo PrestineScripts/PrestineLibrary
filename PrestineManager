@@ -35,6 +35,9 @@ PrestineManager.TabRegistry = {
 	{ Name = "Config",      Icon = "Info",        Setup = "SetupConfig" },
 }
 
+-- Every name below can be used in IncludeFeatures / ExcludeFeatures and in LockFeature / Init({ Locks = ... }).
+-- Section titles lock everything under that section; "WalkSpeed", "Jump Power", "Infinite Jump" are
+-- individual choices inside "Property Overrides".
 PrestineManager.KnownFeatures = {
 	Home = {
 		"Home Links", "Copy YouTube", "Copy Discord",
@@ -42,8 +45,8 @@ PrestineManager.KnownFeatures = {
 		"Queue Management", "Clear Queue", "Cancel Movement",
 	},
 	Player = {
-		"Player Properties", "WalkSpeed", "Jump Power", "Infinite Jump",
-		"Player Camera", "Select Player", "Enable Spy POV",
+		"Player Properties", "Property Overrides", "WalkSpeed", "Jump Power", "Infinite Jump",
+		"Player Camera", "Enable Spy POV", "Select Player",
 	},
 	Performance = {
 		"Rendering Options", "Turn Off Textures", "Turn Off Effects", "Turn Off Lighting",
@@ -57,7 +60,7 @@ PrestineManager.KnownFeatures = {
 	},
 	Settings = {
 		"Movement Config", "Travel Method", "Tween Speed", "Teleport Delay", "Travel Queue Mode",
-		"Interface Settings", "Toggle UI",
+		"Interface Settings", "Toggle UI", "Hover Zoom",
 	},
 	Config = {
 		"Config Status",
@@ -94,8 +97,9 @@ PrestineManager._serverJoinMode = "Lowest"
 PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
-PrestineManager._infJump = false
 PrestineManager._monitorsStarted = false
+PrestineManager._handles = {}  -- feature name -> lockable handle (section / component / choice)
+PrestineManager._locks = {}    -- feature name -> reason (or true) requested before the handle existed
 
 local function getCamera()
 	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
@@ -128,11 +132,6 @@ end
 
 local function isValidMethod(m)
 	return VALID_METHODS[m] == true
-end
-
-local function clampNumber(v, lo, hi)
-	local n = tonumber(v)
-	return n and math.clamp(n, lo, hi) or nil
 end
 
 local function firstValue(v)
@@ -168,9 +167,12 @@ local function formatUptime(seconds)
 	return table.concat(parts, " ")
 end
 
+-- Buttons come back from PrestineLib as a proxy table ({ Frame = <Instance>, Lock = ... }); older libs return the Frame.
 local function getSubtitleLabel(container)
-	if typeof(container) ~= "Instance" then return nil end
-	for _, v in ipairs(container:GetChildren()) do
+	local frame = container
+	if type(container) == "table" then frame = container.Frame end
+	if typeof(frame) ~= "Instance" then return nil end
+	for _, v in ipairs(frame:GetChildren()) do
 		if v:IsA("TextLabel") and v.TextSize == 11 then
 			return v
 		end
@@ -668,6 +670,86 @@ function PrestineManager:_bindCharacterSafety()
 	end
 end
 
+----------------------------------------------------------------------
+-- feature locks
+--
+--   Manager:LockFeature("Player Properties", "This game resets WalkSpeed on the server")
+--   Manager:LockFeature("Jump Power", "Disabled here")        -- one choice inside a dropdown
+--   Manager:UnlockFeature("Player Properties")
+--   Manager:Init(lib, { Locks = { ["Player Camera"] = "Spectating is blocked in this game" } })
+--
+-- A lock can be requested before the feature exists; it is applied the moment the UI is built.
+-- Locking a toggle also switches it off, so its effect never keeps running behind a lock.
+----------------------------------------------------------------------
+local function lockReason(v)
+	if v == true or v == nil or v == "" then return nil end
+	return tostring(v)
+end
+
+function PrestineManager:LockFeature(name, reason, forceValue)
+	self._locks[name] = (reason ~= nil and reason ~= "") and tostring(reason) or true
+	local handle = self._handles[name]
+	if handle and handle.Lock then
+		handle:Lock(lockReason(self._locks[name]), forceValue)
+	end
+end
+
+function PrestineManager:UnlockFeature(name)
+	self._locks[name] = nil
+	local handle = self._handles[name]
+	if handle and handle.Unlock then
+		handle:Unlock()
+	end
+end
+
+function PrestineManager:LockFeatures(map)
+	for name, reason in pairs(map or {}) do
+		if reason == false then
+			self:UnlockFeature(name)
+		else
+			self:LockFeature(name, reason)
+		end
+	end
+end
+
+function PrestineManager:IsFeatureLocked(name)
+	return self._locks[name] ~= nil
+end
+
+function PrestineManager:GetFeature(name)
+	return self._handles[name]
+end
+
+local function register(self, name, handle)
+	if handle == nil then return nil end
+	self._handles[name] = handle
+	local pending = self._locks[name]
+	if pending ~= nil and handle.Lock then
+		handle:Lock(lockReason(pending))
+	end
+	return handle
+end
+
+-- A choice inside a multi-select dropdown behaves like a feature of its own.
+local function choiceHandle(dd, choice)
+	return {
+		Lock = function()
+			dd:LockChoice(choice)
+			local cur = dd:Get()
+			if type(cur) == "table" then
+				local keep = {}
+				for _, c in ipairs(cur) do
+					if c ~= choice then keep[#keep + 1] = c end
+				end
+				if #keep ~= #cur then dd:Set(keep) end
+			end
+		end,
+		Unlock = function()
+			dd:UnlockChoice(choice)
+		end,
+	}
+end
+
 function PrestineManager:_setOptions(options)
 	options = options or {}
 	self._initOptions = options
@@ -680,6 +762,10 @@ function PrestineManager:_setOptions(options)
 	elseif type(exclude) == "table" then
 		self._excludeSet = {}
 		for _, name in ipairs(exclude) do self._excludeSet[name] = true end
+	end
+
+	if type(options.Locks) == "table" then
+		self:LockFeatures(options.Locks)
 	end
 end
 
@@ -719,24 +805,29 @@ function PrestineManager:SetupTab(tabName, PrestineLib, options)
 end
 
 local function addSection(self, lib, tab, title)
-	if not self:IsExcluded(title) then
-		lib:AddSection({ Tab = tab, MainTitle = title })
-	end
+	if self:IsExcluded(title) then return nil end
+	return register(self, title, lib:AddSection({ Tab = tab, MainTitle = title }))
 end
 
 local function addButton(self, lib, tab, name, subtitle, callback)
 	if self:IsExcluded(name) then return nil end
-	return lib:AddButton({ Tab = tab, MainName = name, SubTitle = subtitle, Callback = callback })
+	return register(self, name, lib:AddButton({ Tab = tab, MainName = name, SubTitle = subtitle, Callback = callback }))
 end
 
 local function addToggle(self, lib, tab, name, default, callback)
 	if self:IsExcluded(name) then return nil end
-	return lib:AddToggle({ Tab = tab, MainName = name, DefaultState = default, Callback = callback })
+	return register(self, name, lib:AddToggle({ Tab = tab, MainName = name, DefaultState = default, Callback = callback }))
 end
 
 local function addParagraph(self, lib, tab, title, size)
 	if self:IsExcluded(title) then return nil end
-	return lib:AddParagraph({ Tab = tab, MainTitle = title, paragraphSize = size, MainContent = "Loading..." })
+	return register(self, title, lib:AddParagraph({ Tab = tab, MainTitle = title, paragraphSize = size, MainContent = "Loading..." }))
+end
+
+local function addHybrid(self, lib, tab, params)
+	if self:IsExcluded(params.MainTitle) then return nil end
+	params.Tab = tab
+	return register(self, params.MainTitle, lib:AddDropdownToggle(params))
 end
 
 function PrestineManager:SetupHome(PrestineLib)
@@ -778,66 +869,128 @@ function PrestineManager:SetupHome(PrestineLib)
 	self:StartMonitors()
 end
 
+----------------------------------------------------------------------
+-- Player tab: two hybrid DropdownToggles
+--   Property Overrides  - pick properties, each shows its own slider, the switch applies them
+--   Enable Spy POV      - pick a player, the switch spectates them
+----------------------------------------------------------------------
+local PROPERTY_DEFS = {
+	{
+		choice = "WalkSpeed", key = "Speed",
+		read = function(h) return h.WalkSpeed end,
+		apply = function(h, v) if h.WalkSpeed ~= v then h.WalkSpeed = v end end,
+		restore = function(h, v) h.WalkSpeed = v end,
+	},
+	{
+		choice = "Jump Power", key = "Power",
+		read = function(h) return h.JumpPower end,
+		apply = function(h, v)
+			h.UseJumpPower = true
+			if h.JumpPower ~= v then h.JumpPower = v end
+		end,
+		restore = function(h, v)
+			h.UseJumpPower = true
+			h.JumpPower = v
+		end,
+	},
+}
+
+local function applyProperties(self, store, selection, values)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return false end
+
+	local dd = self._propsDD
+	local chosen = {}
+	for _, c in ipairs(selection or {}) do chosen[c] = true end
+	values = values or {}
+	store.orig = store.orig or {}
+
+	for _, def in ipairs(PROPERTY_DEFS) do
+		local want = chosen[def.choice] and not (dd and dd:IsLocked(def.choice)) and tonumber(values[def.key])
+		if want then
+			if store.orig[def.choice] == nil then store.orig[def.choice] = def.read(hum) end
+			def.apply(hum, want)
+		elseif store.orig[def.choice] ~= nil then
+			def.restore(hum, store.orig[def.choice])
+			store.orig[def.choice] = nil
+		end
+	end
+	return false
+end
+
 function PrestineManager:SetupPlayer(PrestineLib)
+	self:_ensureAttached(PrestineLib)
+	self._propsDD, self._camDD = nil, nil
+
 	addSection(self, PrestineLib, "Player", "Player Properties")
 
-	if not self:IsExcluded("WalkSpeed") then
-		PrestineLib:AddSlider({
-			Tab = "Player",
-			SliderTitle = "WalkSpeed",
-			Min = 0,
-			Max = 500,
-			DefaultValue = 16,
-			Increment = 10,
-			Callback = function(v)
-				pcall(function() getHumanoid().WalkSpeed = v end)
-			end
-		})
-	end
+	if not self:IsExcluded("Property Overrides") then
+		local choices, choiceControls = {}, {}
 
-	if not self:IsExcluded("Jump Power") then
-		PrestineLib:AddSlider({
-			Tab = "Player",
-			SliderTitle = "Jump Power",
-			Min = 0,
-			Max = 1000,
-			DefaultValue = 50,
-			Increment = 10,
-			Callback = function(v)
-				pcall(function()
-					local hum = getHumanoid()
-					hum.UseJumpPower = true
-					hum.JumpPower = v
-				end)
-			end
-		})
-	end
+		if not self:IsExcluded("WalkSpeed") then
+			choices[#choices + 1] = "WalkSpeed"
+			choiceControls["WalkSpeed"] = {
+				{ Key = "Speed", Name = "Speed", Type = "Slider", Min = 0, Max = 500, Default = 16, Increment = 1 },
+			}
+		end
+		if not self:IsExcluded("Jump Power") then
+			choices[#choices + 1] = "Jump Power"
+			choiceControls["Jump Power"] = {
+				{ Key = "Power", Name = "Power", Type = "Slider", Min = 0, Max = 1000, Default = 50, Increment = 1 },
+			}
+		end
+		if not self:IsExcluded("Infinite Jump") then
+			choices[#choices + 1] = "Infinite Jump"
+		end
 
-	addToggle(self, PrestineLib, "Player", "Infinite Jump", false, function(state)
-		self._infJump = state
-	end)
+		if #choices > 0 then
+			local dd = addHybrid(self, PrestineLib, "Player", {
+				MainTitle = "Property Overrides",
+				Description = "Pick what to override, set its value, then flip the switch",
+				ChoiceList = choices,
+				ChoiceControls = choiceControls,
+				Multiple = true,
+				DefaultChoice = {},
+				EmptyText = "Nothing selected",
+				RequiredText = "Pick a property first",
+				WhileOn = function(store, selection, values)
+					return applyProperties(self, store, selection, values)
+				end,
+				WhileCooldown = 0.1,
+				ToggleCallback = function(state, store, selection, values)
+					if not state then
+						applyProperties(self, store, {}, {})
+					end
+				end,
+			})
+			self._propsDD = dd
+
+			if dd then
+				for _, c in ipairs(choices) do
+					register(self, c, choiceHandle(dd, c))
+				end
+			end
+		end
+	end
 
 	addSection(self, PrestineLib, "Player", "Player Camera")
 
-	local playerDropdown
-	local function dropdownNames()
+	if not self:IsExcluded("Enable Spy POV") and not self:IsExcluded("Select Player") then
 		local names = getPlayerNames()
-		return #names > 0 and names or { "None" }
-	end
+		self._spyTarget = names[1] and Players:FindFirstChild(names[1]) or nil
 
-	if not self:IsExcluded("Select Player") then
-		local names = dropdownNames()
-		self._spyTarget = Players:FindFirstChild(names[1])
-
-		playerDropdown = PrestineLib:AddDropdown({
-			Tab = "Player",
-			MainTitle = "Select Player",
+		local dd = addHybrid(self, PrestineLib, "Player", {
+			MainTitle = "Enable Spy POV",
+			Description = "Pick a player, then flip the switch to spectate them",
 			ChoiceList = names,
 			DefaultChoice = names[1],
 			Multiple = false,
+			EmptyText = "No other players",
+			RequiredText = "Pick a player first",
 			Callback = function(v)
 				local name = firstValue(v)
-				self._spyTarget = type(name) == "string" and name ~= "None" and Players:FindFirstChild(name) or nil
+				self._spyTarget = type(name) == "string" and Players:FindFirstChild(name) or nil
 
 				if self._spyEnabled then
 					if self._spyTarget then
@@ -846,33 +999,40 @@ function PrestineManager:SetupPlayer(PrestineLib)
 						resetCamera()
 					end
 				end
-			end
+			end,
+			ToggleCallback = function(state)
+				self._spyEnabled = state
+				local cam = getCamera()
+				if state then
+					self._prevCameraSubject = cam.CameraSubject
+					if self._spyTarget then
+						setCameraToPlayer(self._spyTarget)
+					end
+				elseif self._prevCameraSubject then
+					cam.CameraSubject = self._prevCameraSubject
+					self._prevCameraSubject = nil
+				else
+					resetCamera()
+				end
+			end,
 		})
+		self._camDD = dd
 
-		if PrestineLib.ExcludeFromConfig then PrestineLib:ExcludeFromConfig("Select Player") end
-	end
+		-- the picked player is per-server, so it never belongs in a config
+		if PrestineLib.ExcludeFromConfig then PrestineLib:ExcludeFromConfig("Enable Spy POV") end
 
-	addToggle(self, PrestineLib, "Player", "Enable Spy POV", false, function(state)
-		self._spyEnabled = state
-		local cam = getCamera()
-		if state then
-			self._prevCameraSubject = cam.CameraSubject
-			if self._spyTarget then
-				setCameraToPlayer(self._spyTarget)
-			end
-		elseif self._prevCameraSubject then
-			cam.CameraSubject = self._prevCameraSubject
-		else
-			resetCamera()
+		if dd then
+			register(self, "Select Player", dd) -- alias, so "Select Player" can be locked on its own
 		end
-	end)
+	end
 
 	if self._playerAddedConn then self._playerAddedConn:Disconnect() end
 	if self._playerRemovingConn then self._playerRemovingConn:Disconnect() end
 
 	local function refreshPlayers()
-		if playerDropdown and playerDropdown.UpdateDropdown then
-			pcall(function() playerDropdown:UpdateDropdown(dropdownNames()) end)
+		local dd = self._camDD
+		if dd and dd.UpdateDropdown then
+			pcall(function() dd:UpdateDropdown(getPlayerNames()) end)
 		end
 	end
 
@@ -890,7 +1050,12 @@ function PrestineManager:SetupPlayer(PrestineLib)
 
 	if self._infJumpConn then self._infJumpConn:Disconnect() end
 	self._infJumpConn = UserInputService.JumpRequest:Connect(function()
-		if not self._infJump then return end
+		local dd = self._propsDD
+		if not dd or not dd:GetToggle() or dd:IsLocked("Infinite Jump") then return end
+
+		local sel = dd:Get()
+		if type(sel) ~= "table" or not table.find(sel, "Infinite Jump") then return end
+
 		local char = player.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -975,7 +1140,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 	local joinBtnSub
 
 	if not self:IsExcluded("Join Server Type") then
-		PrestineLib:AddDropdown({
+		register(self, "Join Server Type", PrestineLib:AddDropdown({
 			Tab = "Utility",
 			MainTitle = "Join Server Type",
 			ChoiceList = { "Lowest", "Max", "Full" },
@@ -985,7 +1150,7 @@ function PrestineManager:SetupUtility(PrestineLib)
 				self._serverJoinMode = tostring(firstValue(v) or "Lowest")
 				if joinBtnSub then joinBtnSub.Text = "Mode: " .. self._serverJoinMode end
 			end
-		})
+		}))
 	end
 
 	local joinBtn = addButton(self, PrestineLib, "Utility", "Join Server", "Mode: " .. self._serverJoinMode, function()
@@ -1007,51 +1172,58 @@ function PrestineManager:SetupUtility(PrestineLib)
 	end)
 end
 
+----------------------------------------------------------------------
+-- Settings tab
+--   Travel Method  - dropdown whose choices carry their own values (Tween Speed / Teleport Delay)
+--   Hover Zoom     - value panel: switch + zoom slider (no choices at all)
+----------------------------------------------------------------------
 function PrestineManager:SetupSettings(PrestineLib)
 	self:_ensureAttached(PrestineLib)
 
 	addSection(self, PrestineLib, "Settings", "Movement Config")
 
 	if not self:IsExcluded("Travel Method") then
-		PrestineLib:AddDropdown({
+		local choiceControls = {}
+
+		if not self:IsExcluded("Tween Speed") then
+			choiceControls["Tween"] = {
+				{
+					Key = "Tween Speed", Name = "Tween Speed", Type = "Slider",
+					Min = 50, Max = 600, Increment = 10,
+					Default = math.clamp(tonumber(self.Config.TweenSpeed) or 150, 50, 600),
+				},
+			}
+		end
+
+		if not self:IsExcluded("Teleport Delay") then
+			choiceControls["Teleport"] = {
+				{
+					Key = "Teleport Delay", Name = "Delay (sec)", Type = "Number",
+					Min = 0, Max = 10, Placeholder = "0 - 10",
+					Default = tonumber(self.Config.TeleportDelay) or 0,
+				},
+			}
+		end
+
+		register(self, "Travel Method", PrestineLib:AddDropdown({
 			Tab = "Settings",
 			MainTitle = "Travel Method",
+			Description = "Tween speed and teleport delay appear under their method",
 			ChoiceList = { "Teleport", "Tween", "Walking" },
 			Multiple = false,
 			DefaultChoice = tostring(self.Config.TravelMethod),
-			Callback = function(v)
+			ChoiceControls = choiceControls,
+			Callback = function(v, values)
 				local m = firstValue(v)
 				self.Config.TravelMethod = isValidMethod(m) and m or "Teleport"
-			end
-		})
-	end
 
-	if not self:IsExcluded("Tween Speed") then
-		PrestineLib:AddSlider({
-			Tab = "Settings",
-			SliderTitle = "Tween Speed",
-			Min = 50,
-			Max = 600,
-			DefaultValue = self.Config.TweenSpeed,
-			Increment = 10,
-			Callback = function(v)
-				self.Config.TweenSpeed = v
+				values = values or {}
+				local speed = tonumber(values["Tween Speed"])
+				if speed then self.Config.TweenSpeed = speed end
+				local delay = tonumber(values["Teleport Delay"])
+				if delay then self.Config.TeleportDelay = math.clamp(delay, 0, 10) end
 			end
-		})
-	end
-
-	if not self:IsExcluded("Teleport Delay") then
-		PrestineLib:AddInput({
-			Tab = "Settings",
-			MainTitle = "Teleport Delay",
-			PlaceHolder = "Seconds (0 - 10)",
-			Callback = function(v)
-				local n = clampNumber(v, 0, 10)
-				if n ~= nil then
-					self.Config.TeleportDelay = n
-				end
-			end
-		})
+		}))
 	end
 
 	addToggle(self, PrestineLib, "Settings", "Travel Queue Mode", self.Config.QueueMode, function(state)
@@ -1064,13 +1236,31 @@ function PrestineManager:SetupSettings(PrestineLib)
 	addSection(self, PrestineLib, "Settings", "Interface Settings")
 
 	if not self:IsExcluded("Toggle UI") then
-		PrestineLib:AddKeybind({
+		register(self, "Toggle UI", PrestineLib:AddKeybind({
 			Tab = "Settings",
 			MainTitle = "Toggle UI",
 			DefaultKey = Enum.KeyCode.RightShift,
 			Callback = function(key)
 				PrestineLib:SetGUIHotkey(key)
 			end
+		}))
+	end
+
+	if PrestineLib.SetHoverEnabled and PrestineLib.SetHoverScale then
+		addHybrid(self, PrestineLib, "Settings", {
+			MainTitle = "Hover Zoom",
+			Description = "Components grow slightly while hovered so text is easier to read",
+			Controls = {
+				{ Key = "Zoom", Name = "Zoom Amount", Type = "Slider", Min = 100, Max = 120, Increment = 1, Default = 103, Suffix = "%" },
+			},
+			DefaultState = true,
+			ToggleCallback = function(state, _store, _selection, values)
+				PrestineLib:SetHoverScale((tonumber(values and values.Zoom) or 103) / 100)
+				PrestineLib:SetHoverEnabled(state)
+			end,
+			ControlCallback = function(key, value)
+				if key == "Zoom" then PrestineLib:SetHoverScale((tonumber(value) or 103) / 100) end
+			end,
 		})
 	end
 end
