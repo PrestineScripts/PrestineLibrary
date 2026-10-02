@@ -35,9 +35,6 @@ PrestineManager.TabRegistry = {
 	{ Name = "Config",      Icon = "Info",        Setup = "SetupConfig" },
 }
 
--- Every name below can be used in IncludeFeatures / ExcludeFeatures and in LockFeature / Init({ Locks = ... }).
--- Section titles lock everything under that section; "WalkSpeed", "Jump Power", "Infinite Jump" are
--- individual choices inside "Property Overrides".
 PrestineManager.KnownFeatures = {
 	Home = {
 		"Home Links", "Copy YouTube", "Copy Discord",
@@ -98,8 +95,8 @@ PrestineManager._spyEnabled = false
 PrestineManager._spyTarget = nil
 PrestineManager._antiAfk = false
 PrestineManager._monitorsStarted = false
-PrestineManager._handles = {}  -- feature name -> lockable handle (section / component / choice)
-PrestineManager._locks = {}    -- feature name -> reason (or true) requested before the handle existed
+PrestineManager._handles = {}
+PrestineManager._locks = {}
 
 local function getCamera()
 	return workspace.CurrentCamera or workspace:WaitForChild("Camera")
@@ -117,6 +114,15 @@ end
 local function hasTab(tabName)
 	local main = getgenv()._PrestineMain
 	return main ~= nil and main:FindFirstChild(tabName .. "Contents") ~= nil
+end
+
+local function isHomeVisible()
+	local main = getgenv()._PrestineMain
+	local frame = main and main:FindFirstChild("HomeContents")
+	if not frame then return true end
+	local gui = frame:FindFirstAncestorOfClass("ScreenGui")
+	if gui and not gui.Enabled then return false end
+	return frame.Visible
 end
 
 local function toCFrame(target)
@@ -167,7 +173,6 @@ local function formatUptime(seconds)
 	return table.concat(parts, " ")
 end
 
--- Buttons come back from PrestineLib as a proxy table ({ Frame = <Instance>, Lock = ... }); older libs return the Frame.
 local function getSubtitleLabel(container)
 	local frame = container
 	if type(container) == "table" then frame = container.Frame end
@@ -180,11 +185,17 @@ local function getSubtitleLabel(container)
 	return nil
 end
 
+local staticServerInfo
 local function getServerInfoText()
-	return string.format(
-		"Game Name: %s\nPlace ID: %s\nGame ID: %s\nServer ID: %s\nPlayers: %d/%d\nUptime: %s\nStreaming Enabled: %s\nGravity: %s",
-		game.Name, game.PlaceId, game.GameId,
-		game.JobId ~= "" and game.JobId or "N/A",
+	if not staticServerInfo then
+		staticServerInfo = string.format(
+			"Game Name: %s\nPlace ID: %s\nGame ID: %s\nServer ID: %s\n",
+			game.Name, game.PlaceId, game.GameId,
+			game.JobId ~= "" and game.JobId or "N/A"
+		)
+	end
+	return staticServerInfo .. string.format(
+		"Players: %d/%d\nUptime: %s\nStreaming Enabled: %s\nGravity: %s",
 		#Players:GetPlayers(), Players.MaxPlayers,
 		formatUptime(workspace.DistributedGameTime),
 		tostring(workspace.StreamingEnabled), tostring(workspace.Gravity)
@@ -223,9 +234,23 @@ end
 
 local orig = PrestineManager._original
 local applied = {}
+local perfRuns = {}
+local CHUNK_SIZE = 300
+
+local function processWorkspace(key, step)
+	perfRuns[key] = (perfRuns[key] or 0) + 1
+	local run = perfRuns[key]
+	local count = 0
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if perfRuns[key] ~= run then return end
+		step(inst)
+		count += 1
+		if count % CHUNK_SIZE == 0 then task.wait() end
+	end
+end
 
 local function setTextures(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
+	processWorkspace("Textures", function(inst)
 		if inst:IsA("Decal") then
 			local saved = inst:GetAttribute("Prestine_T")
 			if state then
@@ -236,11 +261,11 @@ local function setTextures(state)
 				inst:SetAttribute("Prestine_T", nil)
 			end
 		end
-	end
+	end)
 end
 
 local function setEffects(state)
-	for _, inst in ipairs(workspace:GetDescendants()) do
+	processWorkspace("Effects", function(inst)
 		if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") then
 			local saved = inst:GetAttribute("Prestine_E")
 			if state then
@@ -251,7 +276,7 @@ local function setEffects(state)
 				inst:SetAttribute("Prestine_E", nil)
 			end
 		end
-	end
+	end)
 end
 
 local function setLighting(state)
@@ -377,7 +402,7 @@ local function applyPerformance()
 		local want = desired[key]
 		if (applied[key] or false) ~= want then
 			applied[key] = want
-			handler(want)
+			task.spawn(handler, want)
 		end
 	end
 end
@@ -627,7 +652,7 @@ function PrestineManager:CustomTravel(target, overrides)
 
 	task.spawn(function()
 		while self.State.Busy do
-			task.wait()
+			task.wait(0.1)
 		end
 		cfg.TravelMethod, cfg.TweenSpeed, cfg.TeleportDelay, cfg.QueueMode = oldMethod, oldSpeed, oldDelay, oldQueue
 	end)
@@ -670,17 +695,6 @@ function PrestineManager:_bindCharacterSafety()
 	end
 end
 
-----------------------------------------------------------------------
--- feature locks
---
---   Manager:LockFeature("Player Properties", "This game resets WalkSpeed on the server")
---   Manager:LockFeature("Jump Power", "Disabled here")        -- one choice inside a dropdown
---   Manager:UnlockFeature("Player Properties")
---   Manager:Init(lib, { Locks = { ["Player Camera"] = "Spectating is blocked in this game" } })
---
--- A lock can be requested before the feature exists; it is applied the moment the UI is built.
--- Locking a toggle also switches it off, so its effect never keeps running behind a lock.
-----------------------------------------------------------------------
 local function lockReason(v)
 	if v == true or v == nil or v == "" then return nil end
 	return tostring(v)
@@ -730,7 +744,6 @@ local function register(self, name, handle)
 	return handle
 end
 
--- A choice inside a multi-select dropdown behaves like a feature of its own.
 local function choiceHandle(dd, choice)
 	return {
 		Lock = function()
@@ -869,11 +882,6 @@ function PrestineManager:SetupHome(PrestineLib)
 	self:StartMonitors()
 end
 
-----------------------------------------------------------------------
--- Player tab: two hybrid DropdownToggles
---   Property Overrides  - pick properties, each shows its own slider, the switch applies them
---   Enable Spy POV      - pick a player, the switch spectates them
-----------------------------------------------------------------------
 local PROPERTY_DEFS = {
 	{
 		choice = "WalkSpeed", key = "Speed",
@@ -957,7 +965,7 @@ function PrestineManager:SetupPlayer(PrestineLib)
 				WhileOn = function(store, selection, values)
 					return applyProperties(self, store, selection, values)
 				end,
-				WhileCooldown = 0.1,
+				WhileCooldown = 0.2,
 				ToggleCallback = function(state, store, selection, values)
 					if not state then
 						applyProperties(self, store, {}, {})
@@ -1018,11 +1026,10 @@ function PrestineManager:SetupPlayer(PrestineLib)
 		})
 		self._camDD = dd
 
-		-- the picked player is per-server, so it never belongs in a config
 		if PrestineLib.ExcludeFromConfig then PrestineLib:ExcludeFromConfig("Enable Spy POV") end
 
 		if dd then
-			register(self, "Select Player", dd) -- alias, so "Select Player" can be locked on its own
+			register(self, "Select Player", dd)
 		end
 	end
 
@@ -1172,11 +1179,6 @@ function PrestineManager:SetupUtility(PrestineLib)
 	end)
 end
 
-----------------------------------------------------------------------
--- Settings tab
---   Travel Method  - dropdown whose choices carry their own values (Tween Speed / Teleport Delay)
---   Hover Zoom     - value panel: switch + zoom slider (no choices at all)
-----------------------------------------------------------------------
 function PrestineManager:SetupSettings(PrestineLib)
 	self:_ensureAttached(PrestineLib)
 
@@ -1288,52 +1290,64 @@ function PrestineManager:StartMonitors()
 
 	if self._uiConn then self._uiConn:Disconnect() end
 
-	local frames, fpsTimer, statusTimer, serverTimer = 0, 0, 0, 0
-
-	self._uiConn = RunService.Heartbeat:Connect(function(dt)
+	local frames = 0
+	self._uiConn = RunService.Heartbeat:Connect(function()
 		frames += 1
-		fpsTimer += dt
-		statusTimer += dt
-		serverTimer += dt
+	end)
 
-		if fpsTimer >= 0.5 then
-			self._fps = math.floor(frames / fpsTimer + 0.5)
-			frames, fpsTimer = 0, 0
-			if self._perfParagraph then
-				self._perfParagraph:SetContent(getPerformanceText(self))
-			end
+	local cache = {}
+	local function push(key, paragraph, text)
+		if paragraph and cache[key] ~= text then
+			cache[key] = text
+			paragraph:SetContent(text)
 		end
+	end
 
-		if serverTimer >= 1 then
-			serverTimer = 0
-			if self._serverStatusParagraph then
-				self._serverStatusParagraph:SetContent(getServerInfoText())
+	task.spawn(function()
+		local last = os.clock()
+		local serverTimer = 2
+
+		while self._monitorsStarted do
+			task.wait(0.5)
+
+			local now = os.clock()
+			local dt = now - last
+			last = now
+
+			self._fps = math.floor(frames / math.max(dt, 0.001) + 0.5)
+			frames = 0
+
+			if isHomeVisible() then
+				push("perf", self._perfParagraph, getPerformanceText(self))
+
+				serverTimer += dt
+				if serverTimer >= 2 then
+					serverTimer = 0
+					push("server", self._serverStatusParagraph, getServerInfoText())
+				end
+
+				if self._statusParagraph then
+					local char = player.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						local cfg = self.Config
+						local text = string.format(
+							"Task: %s\nQueue: %d\nMethod: %s\nTweenSpeed: %s\nTeleportDelay: %s\nWalkSpeed: %g\nJump: %g\nHealth: %.0f/%.0f",
+							tostring(self.State.CurrentTask), #self._queue, cfg.TravelMethod,
+							tostring(cfg.TweenSpeed), tostring(cfg.TeleportDelay),
+							hum.WalkSpeed, hum.UseJumpPower and hum.JumpPower or hum.JumpHeight,
+							hum.Health, hum.MaxHealth
+						)
+
+						local hrp = char:FindFirstChild("HumanoidRootPart")
+						if hrp then
+							text ..= "\nState: " .. hum:GetState().Name .. "\nRoot Anchored: " .. tostring(hrp.Anchored)
+						end
+
+						push("status", self._statusParagraph, text)
+					end
+				end
 			end
-		end
-
-		if statusTimer >= 0.25 then
-			statusTimer = 0
-			if not self._statusParagraph then return end
-
-			local char = player.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			if not hum then return end
-
-			local cfg = self.Config
-			local text = string.format(
-				"Task: %s\nQueue: %d\nMethod: %s\nTweenSpeed: %s\nTeleportDelay: %s\nWalkSpeed: %g\nJump: %g\nHealth: %.0f/%.0f",
-				tostring(self.State.CurrentTask), #self._queue, cfg.TravelMethod,
-				tostring(cfg.TweenSpeed), tostring(cfg.TeleportDelay),
-				hum.WalkSpeed, hum.UseJumpPower and hum.JumpPower or hum.JumpHeight,
-				hum.Health, hum.MaxHealth
-			)
-
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				text ..= "\nState: " .. hum:GetState().Name .. "\nRoot Anchored: " .. tostring(hrp.Anchored)
-			end
-
-			self._statusParagraph:SetContent(text)
 		end
 	end)
 end
