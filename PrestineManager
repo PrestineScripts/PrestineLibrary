@@ -15,13 +15,6 @@ local Terrain = workspace:FindFirstChildOfClass("Terrain")
 
 local fallbackEnv = {}
 local getgenv = getgenv or function() return fallbackEnv end
-local isfolder = isfolder or function() return false end
-local makefolder = makefolder or function() end
-local isfile = isfile or function() return false end
-local readfile = readfile or function() return "" end
-local writefile = writefile or function() end
-local listfiles = listfiles or function() return {} end
-local delfile = delfile or function() end
 local set_clipboard = setclipboard or toclipboard
 
 local VALID_METHODS = { Teleport = true, Tween = true, Walking = true }
@@ -31,14 +24,6 @@ PrestineManager.Config = {
 	TweenSpeed = 150,
 	TeleportDelay = 0,
 	QueueMode = false
-}
-
-PrestineManager.Profiles = {
-	Default = {
-		TravelMethod = "Teleport",
-		TweenSpeed = 150,
-		TeleportDelay = 0
-	}
 }
 
 PrestineManager.TabRegistry = {
@@ -75,10 +60,12 @@ PrestineManager.KnownFeatures = {
 		"Interface Settings", "Toggle UI",
 	},
 	Config = {
-		"Config Scope", "Scope", "Config Selection", "Select Config", "Config Name",
+		"Config Status",
+		"Config Scope", "Scope",
+		"Config Selection", "Select Config", "Config Name",
 		"Config Operations", "Create / Save Config", "Overwrite Selected Config",
-		"Load Selected Config", "Delete Selected Config",
-		"Config Automation", "Set As Autoload", "Auto Save Component Toggles",
+		"Load Selected Config", "Delete Selected Config", "Restore Last Backup",
+		"Config Automation", "Set As Autoload", "Clear Autoload", "Auto Save Configuration",
 	},
 }
 
@@ -524,22 +511,19 @@ function PrestineManager:GetTabEntry(name)
 	return nil
 end
 
-function PrestineManager:ApplyProfile(name)
-	local profile = self.Profiles[name]
-	if not profile then return end
-	for k, v in pairs(profile) do
-		self.Config[k] = v
-	end
-	if not isValidMethod(self.Config.TravelMethod) then
-		self.Config.TravelMethod = "Teleport"
-	end
-end
-
 function PrestineManager:SetConfig(k, v)
 	if self.Config[k] == nil then return end
 	self.Config[k] = v
 	if k == "TravelMethod" and not isValidMethod(v) then
 		self.Config.TravelMethod = "Teleport"
+	end
+
+	local lib = getgenv().PrestineLib
+	if lib and lib.Save and lib.Manager == self then
+		pcall(function()
+			lib._LastKey = nil
+			lib:Save()
+		end)
 	end
 end
 
@@ -705,7 +689,15 @@ function PrestineManager:IsExcluded(featureName)
 	return false
 end
 
+function PrestineManager:_ensureAttached(PrestineLib)
+	if type(PrestineLib) == "table" and type(PrestineLib.AttachManager) == "function" and PrestineLib.Manager ~= self then
+		PrestineLib:AttachManager(self)
+	end
+end
+
 function PrestineManager:SetupTab(tabName, PrestineLib, options)
+	self:_ensureAttached(PrestineLib)
+
 	if options then
 		self:_setOptions(options)
 	elseif not self._initOptions then
@@ -748,6 +740,7 @@ local function addParagraph(self, lib, tab, title, size)
 end
 
 function PrestineManager:SetupHome(PrestineLib)
+	self:_ensureAttached(PrestineLib)
 	self:_bindCharacterSafety()
 	self._statusParagraph, self._serverStatusParagraph, self._perfParagraph = nil, nil, nil
 
@@ -855,6 +848,8 @@ function PrestineManager:SetupPlayer(PrestineLib)
 				end
 			end
 		})
+
+		if PrestineLib.ExcludeFromConfig then PrestineLib:ExcludeFromConfig("Select Player") end
 	end
 
 	addToggle(self, PrestineLib, "Player", "Enable Spy POV", false, function(state)
@@ -1013,6 +1008,8 @@ function PrestineManager:SetupUtility(PrestineLib)
 end
 
 function PrestineManager:SetupSettings(PrestineLib)
+	self:_ensureAttached(PrestineLib)
+
 	addSection(self, PrestineLib, "Settings", "Movement Config")
 
 	if not self:IsExcluded("Travel Method") then
@@ -1078,258 +1075,22 @@ function PrestineManager:SetupSettings(PrestineLib)
 	end
 end
 
+local defaultSetupConfig
 function PrestineManager:SetupConfig(PrestineLib)
-	if not PrestineLib.gameFolderPath then
-		PrestineLib:AddParagraph({
-			Tab = "Config",
-			MainTitle = "Config Unavailable",
-			paragraphSize = 80,
-			MainContent = "Call PrestineLib:Set(hubName, gameName) before Init to enable config saving and loading."
-		})
-		return
+	self:_ensureAttached(PrestineLib)
+
+	if self.SetupConfig ~= defaultSetupConfig then
+		return self:SetupConfig(PrestineLib)
 	end
 
-	_G.PrestineManagerConfig = self.Config
-
-	local localPath = PrestineLib.gameFolderPath
-	local globalPath = PrestineLib.mainFolder and (PrestineLib.mainFolder .. "/_global") or nil
-	local autoloadFile = localPath .. "/_autoload.txt"
-
-	if globalPath then
-		pcall(function()
-			if not isfolder(globalPath) then makefolder(globalPath) end
-		end)
-	end
-
-	local configScope = "Local"
-	local selectedConfig = "Default"
-	local configNameInput = "Default"
-
-	local function getCurrentPath()
-		return configScope == "Global" and globalPath or localPath
-	end
-
-	local function sanitize(name)
-		name = tostring(name or ""):gsub("[^%w%-_ ]", ""):match("^%s*(.-)%s*$")
-		return name ~= "" and name or "Default"
-	end
-
-	local function getProfilesForScope()
-		local path = getCurrentPath()
-		local list = {}
-		if path then
-			pcall(function()
-				for _, file in ipairs(listfiles(path)) do
-					local name = file:match("([^/\\]+)%.json$")
-					if name and name:sub(1, 1) ~= "_" then
-						list[#list + 1] = name
-					end
-				end
-			end)
-		end
-		if #list == 0 then list[1] = "Default" end
-		return list
-	end
-
-	local function saveToScope(name)
-		local path = getCurrentPath()
-		if not path then return false end
-
-		local data = {}
-		for k, v in pairs(PrestineLib.data or {}) do data[k] = v end
-		data._ManagerConfig = self.Config
-
-		return (pcall(function()
-			if not isfolder(path) then makefolder(path) end
-			writefile(path .. "/" .. sanitize(name) .. ".json", HttpService:JSONEncode(data))
-		end))
-	end
-
-	local function loadFromScope(name)
-		local path = getCurrentPath()
-		if not path then return false end
-
-		local filePath = path .. "/" .. sanitize(name) .. ".json"
-		local decoded
-		pcall(function()
-			if isfile(filePath) then
-				decoded = HttpService:JSONDecode(readfile(filePath))
-			end
-		end)
-		if type(decoded) ~= "table" then return false end
-
-		PrestineLib.data = decoded
-		PrestineLib._IsLoading = true
-
-		if type(decoded._ManagerConfig) == "table" then
-			for k, v in pairs(decoded._ManagerConfig) do
-				if self.Config[k] ~= nil then
-					self.Config[k] = v
-				end
-			end
-			if not isValidMethod(self.Config.TravelMethod) then
-				self.Config.TravelMethod = "Teleport"
-			end
-		end
-
-		for cname, comp in pairs(PrestineLib.Registry or {}) do
-			local savedVal = decoded[cname]
-			if savedVal ~= nil then
-				pcall(function() comp:Set(savedVal) end)
-			end
-		end
-
-		PrestineLib._IsLoading = false
-		return true
-	end
-
-	local function deleteFromScope(name)
-		local path = getCurrentPath()
-		if not path then return end
-		pcall(function()
-			local filePath = path .. "/" .. sanitize(name) .. ".json"
-			if isfile(filePath) then delfile(filePath) end
-		end)
-	end
-
-	local configDropdown
-	local overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub, saveBtnSub
-
-	local function refreshDropdown()
-		if configDropdown and configDropdown.UpdateDropdown then
-			task.delay(0.1, function()
-				pcall(function() configDropdown:UpdateDropdown(getProfilesForScope()) end)
-			end)
-		end
-	end
-
-	local function updateAllTargetLabels()
-		local txt = "Target: " .. tostring(selectedConfig)
-		for _, label in ipairs({ overwriteBtnSub, loadBtnSub, delBtnSub, autoBtnSub }) do
-			label.Text = txt
-		end
-	end
-
-	addSection(self, PrestineLib, "Config", "Config Scope")
-
-	if not self:IsExcluded("Scope") then
-		PrestineLib:AddDropdown({
-			Tab = "Config",
-			MainTitle = "Scope",
-			Description = "Global = shared across all games.  Local = this game only.",
-			ChoiceList = { "Local", "Global" },
-			DefaultChoice = "Local",
-			Multiple = false,
-			Callback = function(v)
-				configScope = firstValue(v) == "Global" and "Global" or "Local"
-				selectedConfig = "Default"
-				updateAllTargetLabels()
-				refreshDropdown()
-			end
-		})
-	end
-
-	addSection(self, PrestineLib, "Config", "Config Selection")
-
-	if not self:IsExcluded("Select Config") then
-		configDropdown = PrestineLib:AddDropdown({
-			Tab = "Config",
-			MainTitle = "Select Config",
-			Description = "Pick a config from the current scope.",
-			ChoiceList = getProfilesForScope(),
-			DefaultChoice = "Default",
-			Multiple = false,
-			Callback = function(v)
-				selectedConfig = tostring(firstValue(v) or "Default")
-				updateAllTargetLabels()
-			end
-		})
-	end
-
-	if not self:IsExcluded("Config Name") then
-		PrestineLib:AddInput({
-			Tab = "Config",
-			MainTitle = "Config Name",
-			PlaceHolder = "Enter config name...",
-			Callback = function(v)
-				if v and v ~= "" then
-					configNameInput = v
-					if saveBtnSub then saveBtnSub.Text = "Save As: " .. tostring(v) end
-				end
-			end
-		})
-	end
-
-	addSection(self, PrestineLib, "Config", "Config Operations")
-
-	saveBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Create / Save Config", "Save As: " .. configNameInput, function()
-		local name = sanitize(configNameInput)
-		if saveToScope(name) then
-			refreshDropdown()
-			notify(PrestineLib, "Config", "[" .. configScope .. "] Saved: " .. name)
-		else
-			notify(PrestineLib, "Config", "Save failed")
-		end
-	end))
-
-	overwriteBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Overwrite Selected Config", "Target: " .. selectedConfig, function()
-		if saveToScope(selectedConfig) then
-			notify(PrestineLib, "Config", "[" .. configScope .. "] Overwrote: " .. selectedConfig)
-		end
-	end))
-
-	loadBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Load Selected Config", "Target: " .. selectedConfig, function()
-		if loadFromScope(selectedConfig) then
-			notify(PrestineLib, "Config", "[" .. configScope .. "] Loaded: " .. selectedConfig)
-		else
-			notify(PrestineLib, "Config", "File not found in " .. configScope .. " scope")
-		end
-	end))
-
-	delBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Delete Selected Config", "Target: " .. selectedConfig, function()
-		local deleted = selectedConfig
-		deleteFromScope(deleted)
-		selectedConfig = "Default"
-		updateAllTargetLabels()
-		refreshDropdown()
-		notify(PrestineLib, "Config", "[" .. configScope .. "] Deleted: " .. deleted)
-	end))
-
-	addSection(self, PrestineLib, "Config", "Config Automation")
-
-	autoBtnSub = getSubtitleLabel(addButton(self, PrestineLib, "Config", "Set As Autoload", "Target: " .. selectedConfig, function()
-		pcall(function()
-			writefile(autoloadFile, configScope .. "|" .. selectedConfig)
-		end)
-		notify(PrestineLib, "Config", "Autoload → [" .. configScope .. "] " .. selectedConfig)
-	end))
-
-	if not self:IsExcluded("Auto Save Component Toggles") then
-		PrestineLib:AddSaveToggle({
-			Tab = "Config",
-			MainName = "Auto Save Component Toggles",
-			DefaultState = true
-		})
-	end
-
-	task.delay(1.5, function()
-		pcall(function()
-			if not isfile(autoloadFile) then return end
-			local raw = readfile(autoloadFile)
-			if not raw or raw == "" then return end
-
-			local scope, name = raw:match("^([^|]+)|(.+)$")
-			if not scope then
-				scope, name = "Local", raw
-			end
-
-			local previous = configScope
-			configScope = scope == "Global" and "Global" or "Local"
-			loadFromScope(name)
-			configScope = previous
-		end)
-	end)
+	PrestineLib:AddParagraph({
+		Tab = "Config",
+		MainTitle = "Config Unavailable",
+		paragraphSize = 80,
+		MainContent = "PrestineManager_Saves could not be loaded. Check your connection and make sure PrestineLib.ManagerSavesURL points to the file."
+	})
 end
+defaultSetupConfig = PrestineManager.SetupConfig
 
 function PrestineManager:StartMonitors()
 	if self._monitorsStarted then return end
@@ -1389,6 +1150,7 @@ end
 
 function PrestineManager:Init(PrestineLib, options)
 	self:_setOptions(options)
+	self:_ensureAttached(PrestineLib)
 
 	if not getgenv()._PrestineMain and self._initOptions.GUIArgs then
 		if PrestineLib:CreateGUI(self._initOptions.GUIArgs) == false then return end
